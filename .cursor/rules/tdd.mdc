@@ -1,0 +1,29 @@
+---
+description: Test-Driven Development methodology
+alwaysApply: true
+---
+
+# Test-Driven Development
+
+Before implementing any feature:
+
+1. Write the test file first (pytest for unit and integration)
+2. Confirm the test fails as expected
+3. Implement the minimum code to pass the test
+4. Refactor only after tests pass
+
+## RAG Pipeline Testing
+
+- Test chunking output against known paragraph/subroutine boundaries per language
+- Test preprocessing by comparing column-stripped output to expected clean text
+- Test retrieval by running ground truth queries and asserting relevant chunk IDs in top-5
+- Test ingestion by verifying vector count in Qdrant after indexing each codebase
+- Test all 8 features via dedicated endpoint tests with expected output patterns
+- Test CLI commands produce same results as web API endpoints
+
+## Multi-Codebase Testing
+
+- Test that language detection correctly identifies COBOL vs Fortran files
+- Test that language-specific preprocessors are dispatched correctly
+- Test cross-codebase queries return results from the correct codebase
+- Test codebase filtering via metadata works in retrieval

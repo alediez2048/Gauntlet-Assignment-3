@@ -1,0 +1,14 @@
+.env
+.env.local
+!.env.example
+__pycache__/
+.pytest_cache/
+data/raw/
+*.pyc
+*.log
+dist/
+.next/
+node_modules/
+coverage/
+.ruff_cache/
+.vercel/

@@ -1,0 +1,35 @@
+---
+description: Code patterns and conventions
+alwaysApply: true
+---
+
+# Code Patterns & Conventions
+
+## Module Ownership
+
+- All ingestion logic goes in `src/ingestion/`
+- All retrieval logic goes in `src/retrieval/`
+- All generation logic goes in `src/generation/`
+- All API routes go in `src/api/`
+- All CLI commands go in `src/cli/`
+- All types go in `src/types/`
+- All feature-specific logic goes in `src/features/`
+
+## Coding Standards
+
+- Every function must have Python type hints and return types
+- No `any` types — use explicit typing everywhere
+- Error handling: always use try/except with typed exceptions
+- Environment variables via python-dotenv, never hardcoded
+- All embedding API calls must use batch mode (128 texts per call)
+- LLM model must be configurable via `LEGACYLENS_LLM_MODEL` env var
+
+## Metadata Schema
+
+Chunk metadata must always include:
+`file_path`, `line_start`, `line_end`, `paragraph_name`, `division`, `chunk_type`, `language`, `codebase`
+
+## Interface Parity
+
+Every feature must be accessible via both CLI and API.
+Both interfaces consume the same FastAPI backend.

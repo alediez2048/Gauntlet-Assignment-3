@@ -1,0 +1,38 @@
+---
+description: Multi-codebase handling rules
+alwaysApply: true
+---
+
+# Multi-Codebase Handling
+
+## Collection Strategy
+
+- Single shared Qdrant collection with `codebase` and `language` metadata fields
+- Payload indexes on `codebase` and `language` for O(1) filtering
+
+## Language Detection
+
+- `.cob`, `.cbl`, `.cpy` → COBOL
+- `.f`, `.f90`, `.f77`, `.f95` → Fortran
+- Unknown extension → skip with warning
+
+## Preprocessing Dispatch
+
+- COBOL: column stripping (1-6, 73-80), encoding detection (chardet), comment separation (col 7)
+- Fortran: fixed/free form detection (extension default + heuristic override), comment extraction, continuation handling
+
+## Chunking Dispatch
+
+- COBOL: paragraph-based chunking (adaptive 64-768 tokens)
+- Fortran: subroutine/function-based chunking (adaptive 64-768 tokens)
+
+## Query Behavior
+
+- Users can query across all codebases (default) or filter to a specific one
+- Cross-codebase queries use raw score ranking by default
+- Diversity re-ranking activates when query explicitly mentions comparison or "all codebases"
+
+## Ingestion
+
+- Supports selective re-indexing of individual codebases via metadata delete + re-ingest
+- Metadata always includes `codebase` and `language` fields

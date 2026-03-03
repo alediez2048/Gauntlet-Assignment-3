@@ -1,0 +1,22 @@
+---
+description: Enforce project tech stack versions
+alwaysApply: true
+---
+
+# Tech Stack — Version Pinning
+
+- Language: Python 3.11+ (strict typing with type hints on every function)
+- Vector Database: Qdrant (qdrant-client >= 1.7)
+- Embedding Model: Voyage Code 2 (voyageai SDK)
+- LLM: OpenAI GPT-4o (openai SDK >= 1.0), configurable fallback to GPT-4o-mini
+- Web Framework: Next.js 14 (App Router) for frontend + FastAPI for backend API
+- CLI Framework: Click + Rich for terminal interface
+- Tokenizer: tiktoken (cl100k_base encoding)
+- Encoding Detection: chardet
+- Re-ranking: Cohere Rerank API
+- Testing: pytest + evaluation script
+- Deployment: Render (API) + Vercel (frontend) + Qdrant Cloud (vector DB)
+- Styling: Tailwind CSS v4 for web interface
+
+Do NOT substitute any of these technologies without explicit approval.
+Do NOT use LangChain or LlamaIndex — this is a custom pipeline.

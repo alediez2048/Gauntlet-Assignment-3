@@ -1,0 +1,39 @@
+---
+description: RAG pipeline architecture rules
+alwaysApply: true
+---
+
+# RAG Pipeline Architecture
+
+## Hard Constraints
+
+- Custom pipeline — NO LangChain, NO LlamaIndex
+- Multi-language support: COBOL preprocessor + Fortran preprocessor, dispatched by file extension
+- Chunking must respect language-specific boundaries (COBOL paragraphs, Fortran subroutines)
+- Chunk size: adaptive 64–768 tokens on structural boundaries
+- Embeddings: batch mode via Voyage Code 2 (128 texts per API call, 1536 dimensions)
+
+## Vector Storage
+
+- Qdrant with payload indexes on: `paragraph_name`, `division`, `file_path`, `language`, `codebase`
+- Single shared collection for all codebases
+- Metadata filtering for per-codebase queries
+
+## Retrieval
+
+- Hybrid search (dense + sparse/BM25) via Qdrant native support
+- Query-adaptive weighting: identifier queries → 0.6 BM25, semantic queries → 0.7 dense
+- Re-ranking: metadata-based first (free), then Cohere cross-encoder second
+
+## Context Assembly
+
+- Dynamic token budget (5,000 tokens total)
+- Top-1 result gets hierarchical expansion (up to 2,000 tokens)
+- Remaining chunks fill 3,000 token breadth budget in relevance order
+
+## Generation
+
+- Structured language-aware system prompt with language + feature inserts
+- Confidence output: HIGH / MEDIUM / LOW
+- All answers must include file:line citations
+- All 8 features implemented as composable prompt + retrieval strategies

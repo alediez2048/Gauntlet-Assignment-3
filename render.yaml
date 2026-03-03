@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: legacylens-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: COHERE_API_KEY
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: LEGACYLENS_LLM_MODEL
+        value: gpt-4o
+      - key: LEGACYLENS_COLLECTION
+        value: legacylens
+    healthCheckPath: /api/health

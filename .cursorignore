@@ -1,0 +1,12 @@
+.env
+.env.local
+node_modules/
+__pycache__/
+.pytest_cache/
+data/raw/
+*.pyc
+*.log
+dist/
+.next/
+coverage/
+.ruff_cache/
