@@ -209,13 +209,17 @@ python -m src.cli.main evaluate --dataset evaluation/ground_truth.json
 
 ### 2.3 Deploy Frontend to Vercel
 
-```bash
-cd frontend
-npx vercel --prod
-```
+**Important current status (Phase 0):**
+- The repo currently has no `frontend/` directory and no `vercel.json`.
+- Vercel can be account-prepped now, but frontend deployment is deferred until frontend scaffold work begins.
 
-Set the API URL environment variable in Vercel dashboard:
-- `NEXT_PUBLIC_API_URL=https://legacylens.onrender.com`
+**What to do once frontend exists (GFA-001 / GFA-009):**
+1. Import repo into Vercel
+2. Set root directory to `frontend`
+3. Select framework: Next.js
+4. Add environment variable: `NEXT_PUBLIC_API_URL=https://<your-render-service>.onrender.com`
+5. Set that variable for both Preview and Production environments
+6. Deploy and verify the frontend can successfully call the Render API
 
 ### 2.4 Verify Production Health
 
@@ -280,9 +284,12 @@ QDRANT_URL=<production-url> QDRANT_API_KEY=<production-key> \
 | `Dockerfile` | API container definition (Python 3.11-slim + uvicorn) |
 | `render.yaml` | Render deployment config (free tier, Docker, env vars) |
 | `agents.md` | Agent context — architecture priorities + constraints |
-| `system-design.md` | Data flow diagrams, component map, API endpoints |
 | `CLAUDE.md` | Build/test/lint commands for Claude Code CLI |
-| `DEVLOG.md` | Development log — updated after every ticket |
+| `Docs/architecture/system-design.md` | Data flow diagrams, component map, API endpoints |
+| `Docs/tickets/DEVLOG.md` | Development log — updated after every ticket |
+| `Docs/reference/ENVIRONMENT.md` | This file — environment setup guide |
+| `Docs/requirements/LegacyLens_PRD_Maximalist.md` | Maximalist PRD |
+| `Docs/interviews/` | Interview guide and notes |
 | `evaluation/ground_truth.json` | 50+ query/answer pairs for precision measurement |
 | `evaluation/evaluate.py` | Precision@5 evaluation script |
 

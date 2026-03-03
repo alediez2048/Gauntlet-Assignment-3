@@ -3,7 +3,7 @@
 **Project:** LegacyLens — RAG-Powered Legacy Code Intelligence System  
 **Sprint:** Mar 3–4, 2026 (MVP) | Mar 4–5, 2026 (G4 Final) | Mar 5–8, 2026 (GFA Final)  
 **Developer:** JAD  
-**AI Assistant:** Claude (Cursor Agent)
+**AI Assistant:** Claude (Cursor Agent + Claude Code)
 
 ---
 
@@ -224,5 +224,73 @@ Each ticket entry follows this standardized structure:
 - Front-loading the config and context documents (agents.md, system-design.md, Cursor rules) before writing any code is a force multiplier — every future prompt has the full architectural picture in context
 - The PRD's Phase 0 methodology ("configure before you code") directly maps to the professional practice of establishing architecture decision records before implementation
 - Having typed dataclasses defined upfront (chunks.py, responses.py, features.py) will prevent type drift as modules are implemented independently
+
+---
+
+## Phase 0.5: Post-Scaffolding Assessment & Review ✅
+
+### Plain-English Summary
+- Full codebase review conducted by Claude Code after Phase 0 scaffolding
+- Every source file, test file, config, doc, and cursor rule was read and assessed
+- Identified 5 risks, validated 4 strengths, recommended execution reorder for G4 phase
+- PRD updated to v2.1 with Appendix C containing full assessment and mitigations
+- Purpose: catch planning gaps before the first line of business logic is written
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Time:** ~20 minutes
+- **Branch:** main (uncommitted — assessment only)
+
+### Key Findings
+
+#### Strengths Confirmed
+1. **Type system is highest-leverage Phase 0 output** — `ProcessedFile` → `Chunk` → `EmbeddedChunk` → `RetrievedChunk` → `QueryResponse` chain defines every module boundary contract
+2. **Architecture decisions are pre-resolved** — 30 interview Q&As eliminated all ambiguity about single vs. multiple collections, class hierarchy vs. functional dispatch, full parallelism vs. bounded concurrency
+3. **Failure modes pre-documented** — 12 scenarios with mitigations in system-design.md
+4. **Cursor rules act as continuous guardrails** — 5 `.mdc` files with `alwaysApply: true` prevent drift
+
+#### Risks Identified
+
+| # | Risk | Severity | Mitigation |
+|---|---|---|---|
+| 1 | **Maximalist scope vs. time** — 5 codebases + 8 features is 5x/2x the spec minimum | HIGH | Follow build priority strictly. Don't start Fortran until COBOL chunking is clean. At hour 18, deploy what exists |
+| 2 | **No raw data** — `data/raw/` is empty, blocking all ingestion TDD | HIGH | Download ALL 5 codebases as very first task (MVP-002). Downloads parallelize with writing code |
+| 3 | **Feature architecture mismatch** — PRD specifies ABC classes, interview guide recommends config-driven | MEDIUM | Use config-driven for 5/8 features, custom modules for 3 (Dependency, Pattern, Impact). Avoids 5x code duplication |
+| 4 | **Stub deliverables** — architecture.md, cost-analysis.md, ground_truth.json are empty placeholders | MEDIUM | Fill incrementally during implementation. Don't leave for Day 3 |
+| 5 | **No frontend** — `frontend/` directory doesn't exist yet | LOW | Correctly scheduled for GFA (Days 4-5). Consider `create-next-app` scaffold during G4 to save cold-start time |
+
+#### G4 Phase Reorder Recommendation
+
+**Original order:** Fortran → Ingest → Eval dataset → Features → Re-ranking → Docs → Final eval
+
+**Recommended order:** Fortran → Ingest → Features → Router → Re-ranking → Multi-codebase query → Eval dataset → Docs → Final eval
+
+**Rationale:** Can't write meaningful ground truth queries for features that don't exist. The original schedule had evaluation (G4-008/009) on Day 2 evening before features were built on Day 3. Moved evaluation after features so queries can target real feature behavior.
+
+#### PRD Gaps Found
+
+| Gap | Resolution |
+|---|---|
+| `docker-compose.yml` in repo spec but not created | Create during MVP-015 if needed, or remove from spec |
+| `vercel.json` in repo spec but not created | Create during GFA-009 |
+| `evaluation/results/` directory missing | Create when eval script runs |
+| `src/api/client.py` purpose undocumented | HTTP client for CLI → FastAPI. Add docstring during MVP-014 |
+| Feature architecture: ABC vs config-driven conflict | Resolved: config-driven for 5 features, custom for 3 |
+
+### Files Changed
+- **Modified:** `Docs/requirements/LegacyLens_PRD_Maximalist.md` — version bumped to 2.1, Appendix C added with full assessment
+- **Modified:** `Docs/tickets/DEVLOG.md` — this entry added
+
+### Next Steps
+- **MVP-002:** Download all 5 codebase sources to `data/raw/` (immediate blocker)
+- **MVP-003:** Language detector module
+- **MVP-004:** COBOL preprocessor (column stripping, encoding, comments)
+- Follow the MVP ticket sequence as planned — the schedule is sound
+
+### Learnings
+- A 20-minute assessment before writing code catches structural issues (like the feature architecture mismatch and the eval scheduling error) that would cost hours to discover mid-implementation
+- The gap between "thorough planning" and "ready to execute" is always larger than expected — having every file scaffolded doesn't mean the codebase is ready. Real data (codebase sources) is the true unblocking dependency
+- Config-driven feature architecture (from interview Q5) is materially better than the ABC pattern (from PRD Phase 2 Section 7) for a sprint timeline — 5 features become config entries instead of 5 classes
 
 ---

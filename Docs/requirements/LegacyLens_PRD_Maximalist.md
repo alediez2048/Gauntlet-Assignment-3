@@ -5,7 +5,8 @@
 > Author: Jorge Alejandro Diez
 > Date: March 3, 2026
 > Project: G4 Week 3 — Gauntlet AI Program
-> Version: 2.0 — Maximalist Approach
+> Version: 2.1 — Maximalist Approach (Reviewed)
+> Reviewed: March 3, 2026 — Post-scaffolding assessment added (see Appendix C)
 > Guiding Principle: *"Max out every requirement. Ship all codebases, all 8 features, both interfaces, and exceed every performance target."*
 
 ---
@@ -554,9 +555,23 @@ Every technology choice is grounded in the 30-question interview analysis and pr
 | Tokenizer | tiktoken (cl100k_base) | Precise token counting for context budget |
 | Encoding Detection | chardet | Handles EBCDIC and legacy encodings |
 | Deployment (API) | Render | Free tier, Docker support, no function timeouts |
-| Deployment (Web) | Vercel | Free tier, Next.js native, auto-deploy from git |
+| Deployment (Web) | Vercel | Free tier, Next.js native, auto-deploy from git (after frontend scaffold exists) |
 | Deployment (VectorDB) | Qdrant Cloud | Managed, 1GB free, independent scaling |
 | RAG Framework | Custom Pipeline | No LangChain/LlamaIndex. Full control, interview credibility |
+
+### Vercel Setup Status (As of Phase 0)
+
+**Important current status:**
+- The repo currently has no `frontend/` directory and no `vercel.json`.
+- Vercel can be account-prepped now, but frontend deployment is deferred until frontend scaffold work begins.
+
+**What to do once frontend exists (GFA-001 / GFA-009):**
+1. Import repo into Vercel
+2. Set root directory to `frontend`
+3. Select framework: Next.js
+4. Add environment variable: `NEXT_PUBLIC_API_URL=https://<your-render-service>.onrender.com`
+5. Set that variable for both Preview and Production environments
+6. Deploy and verify the frontend can successfully call the Render API
 
 ## 7. All 8 Code Understanding Features
 
@@ -784,7 +799,7 @@ legacylens/
 │       ├── chunks.py
 │       ├── features.py
 │       └── responses.py
-├── frontend/
+├── frontend/                # (Planned in GFA-001; not present during Phase 0)
 │   ├── package.json
 │   ├── next.config.js
 │   ├── tailwind.config.ts
@@ -834,7 +849,7 @@ legacylens/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── render.yaml
-└── vercel.json
+└── vercel.json              # (Planned in GFA-009; not present during Phase 0)
 ```
 
 ## 10. Failure Modes & Mitigations
@@ -1476,3 +1491,114 @@ Complete reference from the 3-round architecture interview. Updated for maximali
 ---
 
 *"A simple RAG pipeline with accurate retrieval beats a complex system with irrelevant results — but a comprehensive RAG pipeline with accurate retrieval across five codebases and eight features? That's how you max out the assignment."*
+
+---
+
+# Appendix C: Post-Scaffolding Assessment & Recommendations
+
+> Added: March 3, 2026 — After Phase 0 completion, before implementation begins.
+
+## Assessment Summary
+
+**Planning quality: Excellent.** The PRD, system design, interview guide, cursor rules, and type system are thorough and well-reasoned. Architecture decisions are locked in with documented rationale from 30 interview questions. The module layout maps 1:1 to the data flow. Type contracts (`ProcessedFile` → `Chunk` → `EmbeddedChunk` → `RetrievedChunk` → `QueryResponse`) prevent integration bugs.
+
+**Execution readiness: High risk.** Zero lines of business logic exist. Every source module and test file is an empty stub. The clock is ticking against a 24-hour MVP hard gate.
+
+## Strengths Validated
+
+1. **Type system is the highest-leverage Phase 0 output.** Typed dataclasses define clear contracts between every module boundary. This prevents the #1 cause of integration bugs in RAG pipelines: shape mismatches between ingestion output and retrieval input.
+
+2. **Architecture decisions are pre-resolved.** Single Qdrant collection (not 5), functional preprocessors (not class hierarchy), bounded-concurrency ingestion (not fully parallel), config-driven features (not 8 independent modules). Zero time will be wasted debating during implementation.
+
+3. **Failure modes are pre-documented.** 12 failure scenarios with mitigations in system-design.md. Most teams discover these during implementation. Having them upfront means error handling can be built in from the start, not bolted on.
+
+4. **Cursor rules act as continuous guardrails.** The 5 `.mdc` files with `alwaysApply: true` encode constraints (no LangChain, type hints everywhere, adaptive chunking) right where the AI agent will see them every prompt.
+
+## Risks & Mitigations
+
+### RISK 1: Maximalist scope vs. time pressure
+
+**Risk:** The spec requires 1 codebase + 4 features. This PRD targets 5 codebases + 8 features. If any single phase (chunking, retrieval, generation) takes longer than estimated, the expanded scope creates pressure to cut corners on the foundation — the exact wrong tradeoff.
+
+**Mitigation:** Follow the build priority strictly: chunking > retrieval > accuracy > multi-codebase > features > UI > deploy. If at hour 12 the COBOL chunker isn't producing clean paragraphs, do NOT start on Fortran. Get one language right first. The maximalist scope is a stretch goal, not a requirement.
+
+**Decision rule:** At hour 18, if the app is not deployed, drop everything and deploy what exists. This is already in the PRD (Phase 3.1) but bears repeating.
+
+### RISK 2: No raw codebase data exists
+
+**Risk:** `data/raw/` directories are empty. No COBOL or Fortran source files have been downloaded. The entire ingestion pipeline — and by extension all TDD tests — is blocked until real source code is available.
+
+**Mitigation:** MVP-002 (Download GnuCOBOL source) must be the absolute first implementation task. Download source for all 5 codebases early if bandwidth allows — this parallelizes well with writing the detector/parser.
+
+**Recommended sources:**
+- GnuCOBOL: `https://sourceforge.net/projects/gnucobol/files/` or GitHub mirror
+- gfortran: GCC source tree, `gcc/fortran/` directory
+- LAPACK: `https://github.com/Reference-LAPACK/lapack`
+- BLAS: Included in LAPACK repo under `BLAS/SRC/`, or standalone from netlib
+- OpenCOBOL Contrib: `https://sourceforge.net/projects/open-cobol/files/`
+
+### RISK 3: Feature implementation architecture mismatch
+
+**Risk:** The PRD specifies features as ABC-based classes (`BaseFeature` with `retrieve()`, `build_prompt()`, `generate()` abstract methods) in Phase 2 Section 7, but the interview guide (Q5) recommends config-driven features where 5 of 8 features are just `FeatureConfig` dataclasses with custom retrieval/prompt strings — no class per feature. The scaffolding created both `base.py` (for ABC) AND 8 individual feature files.
+
+**Mitigation:** Go with the config-driven approach from the interview guide. It's the right call for a sprint:
+- **Config-driven (5 features):** Code Explanation, Documentation Gen, Translation Hints, Bug Pattern Search, Business Logic — these differ only in prompt template and retrieval parameters. Implement as `FeatureConfig` entries, not classes.
+- **Custom modules (3 features):** Dependency Mapping (needs PERFORM/CALL parsing), Pattern Detection (needs top-30 clustering), Impact Analysis (needs reverse dependency lookup) — these need custom retrieval logic and deserve their own modules.
+
+This means `base.py` becomes a thin runner (not an ABC), the router dispatches to either a config or a custom module, and 5 of the 8 feature files can stay minimal or become config entries in `router.py`.
+
+### RISK 4: Stub deliverables are easy to forget
+
+**Risk:** `architecture.md` and `cost-analysis.md` are "to be completed" placeholders. `ground_truth.json` is empty. These are required submission deliverables. In the rush to ship features, they'll be the last things touched and risk being incomplete.
+
+**Mitigation:**
+- Architecture doc: Fill in sections incrementally as each pipeline component is built. Don't leave it for Day 3.
+- Cost analysis: Track actual API spend from the first embedding call. The framework in Phase 7 is good — just fill in real numbers as they appear.
+- Ground truth: Write 5 queries after MVP ingestion, expand to 50+ during G4.
+
+### RISK 5: Frontend doesn't exist
+
+**Risk:** No `frontend/` directory exists. Next.js project, Vercel config, components — all need to be created from scratch. For a 5-day sprint, this is 4-6 hours minimum for a functional web UI.
+
+**Mitigation:** The GFA schedule (Days 4-5) allocates this correctly. However, consider creating a minimal `/frontend` scaffold during G4 to avoid a cold start on Day 4. Even a `create-next-app` with API proxy configured saves 30 minutes later.
+
+## Revised Implementation Sequence
+
+Based on assessment, the optimal execution order within each phase:
+
+### MVP Day (follow existing schedule, with one change):
+
+1. **MVP-002 first** — download ALL 5 codebases, not just GnuCOBOL. Downloads can happen while you write code. This unblocks G4 ingestion later.
+2. MVP-003 through MVP-016 as planned.
+
+### G4 Days (reorder for flow):
+
+1. G4-001, G4-002 — Fortran preprocessor + chunker (unblocks all Fortran codebases)
+2. G4-003 through G4-006 — Ingest all remaining codebases (batch, can run semi-automated)
+3. G4-010 through G4-017 — All 8 features (config-driven ones are fast, custom ones take longer)
+4. G4-018 — Feature router (after all features exist)
+5. G4-019 — Cohere re-ranking (precision improvement)
+6. G4-007 — Multi-codebase query support (after all codebases are indexed)
+7. G4-008, G4-009 — Ground truth + eval script (after features work, so queries can target real features)
+8. G4-020, G4-021 — Architecture doc + cost analysis (after real metrics exist)
+9. G4-022 — Full evaluation run
+
+**Key change:** Move G4-008/G4-009 (evaluation) AFTER features are built. You can't write meaningful ground truth queries for features that don't exist yet. The original schedule had eval on Day 2 evening before features were built on Day 3 — that's backwards.
+
+### GFA Days: No changes recommended. The schedule is well-structured.
+
+## PRD Gaps to Address During Implementation
+
+| Gap | When to Address | How |
+|---|---|---|
+| `docker-compose.yml` listed in repo spec but not created | MVP-015 | Create if needed for local Qdrant, or remove from spec |
+| `vercel.json` listed in repo spec but not created | GFA-009 | Create during Vercel deployment |
+| `evaluation/results/` directory listed but not created | G4-009 | Create when eval script outputs results |
+| No `.env` entry in `.gitignore` verification | Now | Verify `.env` is gitignored (it is — confirmed) |
+| `src/api/client.py` purpose unclear | MVP-014 | This is the HTTP client the CLI uses to call the FastAPI backend — document in module docstring |
+
+## Final Note
+
+The planning is A-tier. The architecture decisions are sound. The type system is well-designed. The risk is purely execution speed. Follow the build priority, don't get distracted by polish before the foundation works, and ship MVP before anything else.
+
+*Every hour spent on a feature that sits on top of broken chunking is a wasted hour.*

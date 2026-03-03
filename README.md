@@ -64,7 +64,7 @@ npm run dev
 
 ## Architecture
 
-See [system-design.md](system-design.md) for the full data flow and component map.
+See [system-design.md](Docs/architecture/system-design.md) for the full data flow and component map.
 
 **Tech Stack:** Python 3.11 · FastAPI · Qdrant · Voyage Code 2 · GPT-4o · Next.js 14 · Click + Rich
 
@@ -72,10 +72,14 @@ See [system-design.md](system-design.md) for the full data flow and component ma
 
 ## Documentation
 
-- [Architecture Document](docs/architecture.md)
-- [Cost Analysis](docs/cost-analysis.md)
-- [Pre-Search Document](docs/pre-search.md)
-- [System Design](system-design.md)
+- [Architecture Document](Docs/architecture/architecture.md)
+- [Cost Analysis](Docs/architecture/cost-analysis.md)
+- [Pre-Search Document](Docs/requirements/pre-search.md)
+- [System Design](Docs/architecture/system-design.md)
+- [PRD](Docs/requirements/LegacyLens_PRD_Maximalist.md)
+- [Interview Guide](Docs/interviews/LegacyLens_Maximalist_Interview_Guide.md)
+- [Environment Guide](Docs/reference/ENVIRONMENT.md)
+- [Dev Log](Docs/tickets/DEVLOG.md)
 
 ## License
 

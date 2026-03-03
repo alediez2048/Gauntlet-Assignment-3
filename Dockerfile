@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ src/
 COPY agents.md .
-COPY system-design.md .
+COPY Docs/architecture/system-design.md .
 
 EXPOSE 8000
 
