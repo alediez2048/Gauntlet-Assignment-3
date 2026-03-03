@@ -294,3 +294,296 @@ Each ticket entry follows this standardized structure:
 - Config-driven feature architecture (from interview Q5) is materially better than the ABC pattern (from PRD Phase 2 Section 7) for a sprint timeline — 5 features become config entries instead of 5 classes
 
 ---
+
+## Phase 0.6: Final Setup Closure, Deployment Baseline, and Docs Sync ✅
+
+### Plain-English Summary
+- Closed the remaining Phase 0 setup gaps after initial scaffolding
+- Reorganized all documentation into a categorized `Docs/` hierarchy and synced references
+- Created project-local Claude skills under `.claude/skills/` so guidance is versioned with the repo
+- Fixed Render boot failure by adding a valid FastAPI ASGI app entrypoint and deployed successfully
+- Confirmed live baseline endpoints (`/api/health`, `/api/codebases`) on Render
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Time:** ~2 hours (incremental)
+- **Branch:** main
+- **Commits:**
+  - `2e04456` — docs/structure + skills + phase-0 alignment updates
+  - `8e4e8ac` — FastAPI ASGI app fix for Render deploy
+
+### Scope
+- Phase 0 closure tasks: doc organization, environment hardening, deployment unblock, and live verification
+
+### Key Achievements
+- Docs moved from mixed root + `docs/` paths into a single categorized tree:
+  - `Docs/architecture/`, `Docs/requirements/`, `Docs/reference/`, `Docs/interviews/`, `Docs/tickets/`
+- `README`, PRD, and environment guidance updated to reflect the new document paths and current deployment status
+- `.env` created from template and confirmed required key presence
+- 5 Claude skills + references added and versioned in project:
+  - `legacylens-constraints`, `legacylens-tdd`, `legacylens-ingestion`, `legacylens-retrieval`, `legacylens-features`
+- Render deployment moved from failed boot to live service state
+
+### Technical Implementation
+- Added FastAPI entrypoint in `src/api/app.py`:
+  - `app = FastAPI(...)`
+  - `GET /api/health` returning `{"status":"ok"}`
+  - `GET /api/codebases` returning configured codebase metadata from `src/config.py`
+- Updated `Dockerfile` references for moved architecture docs (`Docs/architecture/system-design.md`)
+- Updated PRD + Environment docs to explicitly defer Vercel deployment until `frontend/` exists (GFA phase)
+
+### Issues & Solutions
+- **Render build error:** `failed to read dockerfile: open Dockerfile: no such file or directory`
+  - **Fix:** pushed latest commit with correct repository structure and Dockerfile path
+- **Render runtime error:** `Attribute "app" not found in module "src.api.app"`
+  - **Fix:** implemented minimal ASGI app in `src/api/app.py` and redeployed
+- **Git push auth issue:** SSH key not configured for remote push
+  - **Fix:** authenticated with `gh auth login` and pushed via HTTPS credential helper
+
+### Testing
+- Deployed Render smoke checks passed:
+  - `GET https://gauntlet-assignment-3.onrender.com/api/health` → `200`, `{"status":"ok"}`
+  - `GET https://gauntlet-assignment-3.onrender.com/api/codebases` → `200`, 5 configured codebases returned
+  - `GET /` → `404` (expected for current baseline)
+
+### Files Changed
+- **Added:** `.claude/skills/*` (5 skills + references)
+- **Moved/Reorganized:** docs into `Docs/` categorized directories
+- **Updated:** `Docs/requirements/LegacyLens_PRD_Maximalist.md`, `Docs/reference/ENVIRONMENT.md`, `README.md`, `Dockerfile`
+- **Updated:** `src/api/app.py` (ASGI app entrypoint + baseline endpoints)
+
+### Acceptance Criteria
+- [x] Phase 0 scaffolding and environment setup complete
+- [x] Local/project docs are structured and internally consistent
+- [x] Environment guide reflects actual live Render deployment status
+- [x] Render deployment unblocked and live health endpoint confirmed
+- [x] Phase 0 baseline committed and pushed to `main`
+
+### Performance
+- Render Free tier boot confirmed with expected cold-start behavior
+- Baseline endpoint latency is acceptable for Phase 0 health checks
+
+### Next Steps
+- **MVP-002:** Download GnuCOBOL source into `data/raw/gnucobol/`
+- **MVP-003:** Implement language detector module
+- **MVP-004:** Implement COBOL preprocessor (column stripping, encoding, comments)
+- **MVP-013+:** Add `/api/query` and streaming query endpoints
+
+### Learnings
+- Deployment-first validation early in MVP prevents late-stage blocker cascades
+- Keeping agent skills versioned inside the repo increases reproducibility across sessions
+- Document path consistency (`Docs/` hierarchy) removes prompt/context drift and reduces setup confusion
+
+---
+
+## MVP-002: Download GnuCOBOL Source ✅
+
+### Plain-English Summary
+- Acquired real GnuCOBOL source under `data/raw/gnucobol/` using an official SourceForge release archive
+- Initial archive was too sparse for practical ingestion TDD, so added the official GnuCOBOL contributions corpus (Git mirror of SourceForge contrib tree)
+- Verified supported extensions, corpus size, readability, and git-ignore behavior end-to-end
+- Result: the raw corpus is now usable for MVP-003 and MVP-004 implementation
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Time:** ~45 minutes
+- **Branch:** main
+- **Commit:** N/A (working tree update)
+
+### Scope
+- Populate canonical path `data/raw/gnucobol/` with usable COBOL corpus
+- Validate extension coverage, file count, LOC, readability, and git hygiene
+- Record command evidence and completion details in DEVLOG
+
+### Key Achievements
+- Added official `gnucobol-3.2` source tree from SourceForge
+- Added `gnucobol-contrib` corpus to meet practical MVP corpus thresholds
+- Final validated corpus: `799` supported files and `283208` LOC
+- Confirmed `799/799` supported files are readable text
+
+### Technical Implementation
+- Acquisition source #1 (archive): `https://sourceforge.net/projects/gnucobol/files/gnucobol/3.2/gnucobol-3.2.tar.gz/download`
+  - Extracted to `data/raw/gnucobol/gnucobol-3.2/`
+- Acquisition source #2 (official contrib mirror clone): `https://github.com/OCamlPro/gnucobol-contrib.git`
+  - Cloned to `data/raw/gnucobol/gnucobol-contrib/`
+- Additional SourceForge NIST artifact downloaded: `https://sourceforge.net/projects/gnucobol/files/nist/newcob.val.tar.gz/download`
+  - Extracted artifact path: `data/raw/gnucobol/newcob.val` (single text artifact retained for provenance)
+
+### Issues & Solutions
+- **Issue:** `gnucobol-3.2` archive alone contained only `8` supported files (`1475` LOC)
+  - **Solution:** Added the GnuCOBOL contributions corpus under the same canonical path
+- **Issue:** `newcob.val.tar.gz` yielded a single `.val` text artifact, not `.cob/.cbl/.cpy`
+  - **Solution:** Kept for provenance, but excluded from supported-extension validation
+- **Issue:** Case-colliding filenames in contrib repo on case-insensitive macOS filesystem
+  - **Solution:** Accepted clone warning; retained resulting corpus because validation thresholds still pass
+
+### Errors / Bugs / Problems
+- Clone warning reported case-collision path groups for a few files (README and COPYBOOK variants)
+- No blocking acquisition or validation errors after adding contrib corpus
+
+### Testing
+- Directory check: `ls -la data/raw/gnucobol`
+  - Contains `gnucobol-3.2/`, `gnucobol-contrib/`, and `newcob.val`
+- Supported extension count:
+  - `COBOL_FILE_COUNT=799`
+  - Breakdown: `.cob=334`, `.cbl=246`, `.cpy=219`
+- LOC estimate:
+  - `TOTAL_LOC=283208`
+- Readability:
+  - `READABLE_TEXT_FILES=799`
+  - `UNREADABLE_FILES=0`
+- Git hygiene:
+  - `git status --short` shows no tracked files from `data/raw/`
+
+### Files Changed
+- **Added (ignored raw dataset):**
+  - `data/raw/gnucobol/gnucobol-3.2/**`
+  - `data/raw/gnucobol/gnucobol-contrib/**`
+  - `data/raw/gnucobol/newcob.val`
+- **Updated:**
+  - `Docs/tickets/DEVLOG.md`
+
+### Acceptance Criteria
+- [x] `data/raw/gnucobol/` populated with real GnuCOBOL source files
+- [x] Supported COBOL extension files are present (`.cob/.cbl/.cpy`)
+- [x] Basic counts/validation executed and recorded
+- [x] Raw dataset not tracked by git
+- [x] DEVLOG updated with MVP-002 details
+
+### Performance
+- Acquisition and extraction completed without manual retry loops
+- Final corpus comfortably exceeds practical MVP size thresholds (`50+` files, `10k+` LOC)
+
+### Next Steps
+- Start **MVP-003:** implement language detector module in `src/ingestion/detector.py`
+- Start **MVP-004:** implement COBOL preprocessor (column stripping, encoding detection, comment separation)
+- Use the new corpus immediately for TDD of preprocessing and chunking behavior
+
+### Learnings
+- Official release source can be valid but too sparse for ingestion TDD; corpus-size gates should be explicit
+- Recording exact source URLs in DEVLOG improves re-ingestion reproducibility
+- Verifying git-ignore behavior early prevents accidental raw-data tracking
+
+---
+
+## Session Handoff: MVP-002 Confirmed, G4-003 Primer Created ✅
+
+### Plain-English Summary
+- New Cursor Agent session picked up after previous session completed MVP-002 but got stuck during status update
+- Re-verified all MVP-002 deliverables: corpus on disk (799 files, 283K LOC), git hygiene confirmed, DEVLOG already written
+- Confirmed other `data/raw/` directories (blas, gfortran, lapack, opencobol-contrib) are intentionally empty — those are G4 phase tickets
+- Created `Docs/tickets/G4-003-primer.md` — full primer for GNU Fortran source acquisition and ingestion
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Time:** ~10 minutes
+- **Branch:** main
+
+### Files Changed
+- **Created:** `Docs/tickets/G4-003-primer.md`
+- **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
+
+### Next Steps
+- **MVP-003:** Language detector module (`src/ingestion/detector.py`)
+- **MVP-004:** COBOL preprocessor (column stripping, encoding detection, comment separation)
+- **MVP-005 through MVP-016:** Complete the MVP pipeline
+- **G4-003:** Execute GNU Fortran acquisition (after G4-001 + G4-002 exist for full ingestion)
+
+---
+
+## MVP-003: Language Detector Module ✅
+
+### Plain-English Summary
+- Implemented the language detection and processing dispatch layer for the ingestion pipeline
+- Maps file extensions to language (COBOL/Fortran) and returns dispatch metadata (preprocessor, chunker, codebase)
+- Uses `src/config.CODEBASES` as single source of truth — no hardcoded duplicate mappings
+- Unknown extensions return `None` and log a warning without crashing
+- TDD workflow followed: 33 tests written first, confirmed failing, then implementation made them pass
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Time:** ~20 minutes
+- **Branch:** `feature/mvp-003-language-detector`
+
+### Scope
+- Replace empty `src/ingestion/detector.py` placeholder with tested extension-based language detection
+- Provide stable public API for downstream ingestion modules (MVP-004, MVP-005, G4-001, G4-002)
+
+### Key Achievements
+- 3 public functions with clean, stable signatures for downstream consumers
+- 33 unit tests covering all extension mappings, case insensitivity, unknown extensions, and route structure
+- Zero hardcoded extension lists — derived from `CODEBASES` config at module load time
+- Accepts both `str` and `Path` inputs for ergonomic downstream use
+
+### Technical Implementation
+
+#### Public API Introduced
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `detect_language` | `(path: str \| Path) -> str \| None` | `"cobol"`, `"fortran"`, or `None` |
+| `get_processing_route` | `(path: str \| Path) -> ProcessingRoute \| None` | Dict with `language`, `codebase`, `preprocessor`, `chunker`, `extension` |
+| `is_supported_source_file` | `(path: str \| Path) -> bool` | `True` if extension is recognized |
+
+#### ProcessingRoute TypedDict
+
+```python
+class ProcessingRoute(TypedDict):
+    language: str      # "cobol" | "fortran"
+    codebase: str      # "gnucobol" | "gfortran" | "lapack" | "blas" | "opencobol-contrib"
+    preprocessor: str  # "cobol" | "fortran"
+    chunker: str       # "cobol_paragraph" | "fortran_subroutine"
+    extension: str     # ".cob" | ".cbl" | ".cpy" | ".f" | ".f90" | ".f77" | ".f95"
+```
+
+#### Architecture Decisions
+- **Extension map built once at import time** from `CODEBASES` — O(1) lookups, zero drift from config
+- **Multi-codebase awareness:** Extensions like `.f` map to multiple codebases (gfortran, lapack, blas); the first registered codebase is returned by default, callers with codebase context can filter
+- **Case-insensitive:** All extension comparisons use `.lower()`
+- **Logging over exceptions:** Unknown files log warnings via `logging.getLogger(__name__)` instead of raising
+
+### Issues & Solutions
+- No issues encountered — clean implementation pass
+
+### Errors / Bugs / Problems
+- None
+
+### Testing
+- **33 tests**, all passing
+- **Test classes:** `TestDetectLanguage` (14 tests), `TestGetProcessingRoute` (5 tests), `TestIsSupportedSourceFile` (9 tests + 5 parametrized unsupported)
+- Coverage: all 7 supported extensions, case insensitivity, unknown extensions, no-extension files, string vs Path inputs, route structure validation
+- Linter: `ruff check` — all checks passed
+
+### Files Changed
+- **Modified:** `src/ingestion/detector.py` — full implementation (3 public functions + `ProcessingRoute` TypedDict)
+- **Modified:** `tests/test_detector.py` — 33 unit tests across 3 test classes
+- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
+
+### Acceptance Criteria
+- [x] `src/ingestion/detector.py` implemented with extension-based routing
+- [x] Unknown extensions handled safely (skip + warning, no crash)
+- [x] Unit tests added and passing in `tests/test_detector.py`
+- [x] TDD flow followed (failing tests first, then pass)
+- [x] DEVLOG updated with MVP-003 entry
+- [x] Public function signatures are stable for MVP-004/005 consumption
+- [x] No network calls, no Qdrant calls, no embedding calls
+
+### Performance
+- Extension map built once at import time; all lookups are O(1) dict access
+- Module import adds negligible overhead (<1ms)
+
+### Next Steps
+- **MVP-004:** COBOL preprocessor (column stripping, encoding detection via chardet, comment separation)
+- **MVP-005:** COBOL paragraph chunker (adaptive 64–768 token chunks on paragraph boundaries)
+- Both modules will consume `detect_language` and `get_processing_route` from this module
+
+### Learnings
+- Building the extension map from `CODEBASES` config (rather than hardcoding) ensures zero drift and makes adding new languages/codebases a config-only change
+- The `TypedDict` for `ProcessingRoute` gives downstream consumers autocomplete and type checking without runtime overhead
+- Accepting both `str` and `Path` via union type prevents conversion boilerplate at every call site
+
+---
