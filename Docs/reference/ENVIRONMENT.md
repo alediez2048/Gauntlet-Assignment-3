@@ -19,8 +19,8 @@ Quick reference for running, testing, deploying, and troubleshooting the LegacyL
 │  OpenAI GPT-4o API                    │  OpenAI GPT-4o API           │
 │  Cohere Rerank API                    │  Cohere Rerank API           │
 │                                       │                              │
-│  Next.js dev server (:3000)           │  Vercel (auto-deploy)        │
-│    └─ frontend/  ←───────────────→    │    └─ legacylens.vercel.app  │
+│  Next.js dev server (:3000)           │  Vercel (planned, GFA phase) │
+│    └─ frontend/  ←───────────────→    │    └─ <pending>.vercel.app   │
 │                                       │                              │
 │  CLI (python -m src.cli.main)         │  CLI (hits deployed API)     │
 └──────────────────────────────────────────────────────────────────────┘
@@ -189,8 +189,8 @@ python -m src.cli.main evaluate --dataset evaluation/ground_truth.json
 
 | Service | Platform | URL (placeholder) | Config File |
 |---|---|---|---|
-| API Backend | Render (free tier, Docker) | `https://legacylens.onrender.com` | `render.yaml` |
-| Web Frontend | Vercel (free tier, Next.js) | `https://legacylens.vercel.app` | `vercel.json` |
+| API Backend | Render (free tier, Docker) | `https://gauntlet-assignment-3.onrender.com` | `render.yaml` |
+| Web Frontend | Vercel (free tier, Next.js) | `Pending (not deployed in Phase 0)` | `vercel.json` (planned in GFA-009) |
 | Vector DB | Qdrant Cloud (free 1GB) | `https://your-cluster.qdrant.io:6333` | N/A (managed) |
 
 ### 2.2 Deploy API to Render
@@ -206,6 +206,12 @@ python -m src.cli.main evaluate --dataset evaluation/ground_truth.json
    - `LEGACYLENS_LLM_MODEL=gpt-4o`
    - `LEGACYLENS_COLLECTION=legacylens`
 4. Deploy triggers automatically on push to `main`
+
+**Current live status (Phase 0):**
+- Service URL: `https://gauntlet-assignment-3.onrender.com`
+- `GET /api/health` returns `200` with `{"status":"ok"}`
+- `GET /api/codebases` returns configured codebase metadata
+- `GET /` returns `404` (expected until a root route is intentionally added)
 
 ### 2.3 Deploy Frontend to Vercel
 
@@ -225,10 +231,11 @@ python -m src.cli.main evaluate --dataset evaluation/ground_truth.json
 
 ```bash
 # API
-curl -s https://legacylens.onrender.com/api/health
+curl -s https://gauntlet-assignment-3.onrender.com/api/health
 
 # Frontend
-curl -s https://legacylens.vercel.app -o /dev/null -w "%{http_code}"
+# Pending until frontend is deployed in GFA phase
+# curl -s https://<your-vercel-domain>.vercel.app -o /dev/null -w "%{http_code}"
 ```
 
 ### 2.5 Prevent Render Spin-Down
@@ -238,7 +245,7 @@ Render free tier spins down after 15 minutes of inactivity. First request after 
 **Solution:** UptimeRobot (free) pinging the health endpoint every 5 minutes.
 
 1. Sign up at https://uptimerobot.com/
-2. Add monitor: HTTP, `https://legacylens.onrender.com/api/health`, every 5 min
+2. Add monitor: HTTP, `https://gauntlet-assignment-3.onrender.com/api/health`, every 5 min
 3. The health endpoint must warm the full stack (verify Qdrant connectivity), not just return 200
 
 ### 2.6 Production Ingestion
@@ -378,7 +385,7 @@ python -m src.cli.main ingest --codebase gnucobol --path data/raw/gnucobol/
 
 **Fix:** Ensure `src/api/app.py` includes CORS middleware allowing the frontend origin:
 ```python
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000", "https://legacylens.vercel.app"], ...)
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000", "https://<your-vercel-domain>.vercel.app"], ...)
 ```
 
 ### Chunking Produces Zero Chunks
@@ -412,7 +419,7 @@ STATUS:    python -m src.cli.main status
 EVALUATE:  python -m src.cli.main evaluate --dataset evaluation/ground_truth.json
 FRONTEND:  cd frontend && npm run dev
 HEALTH:    curl localhost:8000/api/health
-DEPLOY:    git push origin main  (auto-deploys to Render + Vercel)
+DEPLOY:    git push origin main  (auto-deploys to Render now; Vercel after frontend scaffold)
 ```
 
 ---
@@ -424,23 +431,28 @@ Before any demo or grading session, run these checks:
 ### 7.1 Production Health
 
 ```bash
-curl -s https://legacylens.onrender.com/api/health
-curl -s https://legacylens.vercel.app -o /dev/null -w "%{http_code}\n"
+curl -s https://gauntlet-assignment-3.onrender.com/api/health
+curl -s https://gauntlet-assignment-3.onrender.com/api/codebases
+# After GFA frontend deploy:
+# curl -s https://<your-vercel-domain>.vercel.app -o /dev/null -w "%{http_code}\n"
 ```
 
-Both should return 200. If the API returns nothing, it's in cold start — wait 30s and retry.
+Render endpoints should return 200. If the API returns nothing, it's in cold start — wait 30s and retry.
 
 ### 7.2 Query Smoke Test
 
 ```bash
-# Test via deployed API
-curl -sS -X POST https://legacylens.onrender.com/api/query \
-  -H "Content-Type: application/json" \
-  -d '{"query":"What does CALCULATE-INTEREST do?","feature":"code_explanation"}' \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print('Answer length:', len(d.get('answer',''))); print('Chunks:', len(d.get('chunks',[]))); print('Confidence:', d.get('confidence',''))"
+# Phase 0 baseline smoke test
+curl -s https://gauntlet-assignment-3.onrender.com/api/health
+curl -s https://gauntlet-assignment-3.onrender.com/api/codebases | python3 -c "import sys,json; d=json.load(sys.stdin); print('Codebases:', len(d.get('codebases', [])))"
+
+# MVP+ smoke test (after /api/query is implemented in MVP-013)
+# curl -sS -X POST https://gauntlet-assignment-3.onrender.com/api/query \
+#   -H "Content-Type: application/json" \
+#   -d '{"query":"What does CALCULATE-INTEREST do?","feature":"code_explanation"}'
 ```
 
-Expected: answer length > 100, chunks > 0, confidence is HIGH or MEDIUM.
+Expected (Phase 0): health status is `ok`; codebases count is 5.
 
 ### 7.3 Evaluation Run
 
@@ -455,8 +467,8 @@ Target: Precision@5 > 85%.
 | Check | Blocking for Demo? |
 |---|---|
 | Production API healthy | Yes |
-| Production frontend loads | Yes |
-| Query returns cited answer | Yes |
+| Production frontend deployed | Not yet (GFA phase) |
+| Query returns cited answer | Not yet (MVP-013+) |
 | Evaluation precision > 85% | Yes |
 | All 5 codebases queryable | Yes (G4+) |
 | All 8 features work | Yes (G4+) |
