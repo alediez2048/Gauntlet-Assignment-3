@@ -7,233 +7,6 @@
 
 ---
 
-
-
-
-
-## MVP-013: FastAPI Query Route Integration ✅
-
-### Plain-English Summary
-- Implemented the first end-to-end API orchestration path by wiring retrieval, reranking, and LLM generation behind a FastAPI query endpoint.
-- Added typed Pydantic request/response schemas in `src/api/schemas.py` with deterministic validation for query, feature, top_k, language, and codebase fields.
-- Implemented `POST /api/query` and `POST /api/stream` routes in `src/api/routes.py` with stage-specific error mapping (400 for validation, 500 for pipeline failures).
-- Wired API router into `src/api/app.py` while preserving existing `/api/health` and `/api/codebases` endpoints.
-
-### Metadata
-- **Status:** Complete
-- **Date:** Mar 4, 2026
-- **Ticket:** MVP-013
-- **Branch:** `feature/mvp-012-llm-generation-module` (uncommitted — work done on MVP-012 branch)
-
-### Scope
-- Implement API-layer orchestration so a single POST request runs the full query pipeline
-- Define stable request/response schemas for CLI and frontend consumption
-- Keep route layer thin — no ingestion, prompt-template, or retrieval logic in routes
-
-### Technical Implementation
-
-#### Routes (`src/api/routes.py`)
-- `POST /api/query` — runs retrieval → rerank → generation, returns `QueryResponseSchema`
-- `POST /api/stream` — runs retrieval → rerank → streams generation output as `text/plain`
-- Pipeline stages isolated into `_run_retrieval()`, `_run_rerank()`, `_run_generation()` with typed error mapping
-
-#### Schemas (`src/api/schemas.py`)
-- `QueryRequest` — Pydantic model with field validators for query (non-blank), feature (from `FEATURES`), top_k (positive), language (supported set), codebase/model (optional with blank→None normalization)
-- `RetrievedChunkSchema` — API serialization of `RetrievedChunk` with `from_retrieved_chunk()` factory
-- `QueryResponseSchema` — API serialization of `QueryResponse` with `from_query_response()` factory and `codebase_filter` backfill
-
-#### Error Mapping
-- `SearchValidationError` / `RerankerValidationError` / `GenerationValidationError` → 400
-- `SearchConfigError` / `SearchBackendError` / `GenerationConfigError` / `GenerationError` → 500
-- Unexpected exceptions → 500 with generic "internal error" detail
-
-### Testing
-- **9 tests** in `tests/test_api.py`, all passing
-- Coverage: response contract, blank query validation, positive top_k validation, unknown feature validation, pipeline stage invocation order, codebase/top_k passthrough, retrieval failure mapping, generation failure mapping, streaming response
-- Full regression: all prior tests still passing
-
-### Files Changed
-- **Modified:** `src/api/app.py` — router registration + CORS middleware
-- **Modified:** `src/api/routes.py` — query and stream route handlers
-- **Modified:** `src/api/schemas.py` — Pydantic request/response schemas
-- **Created:** `tests/test_api.py` — 9 API endpoint tests
-
-### Acceptance Criteria
-- [x] `POST /api/query` implemented and wired into app router
-- [x] Endpoint returns deterministic `QueryResponse`-compatible payloads
-- [x] API tests added and passing in `tests/test_api.py`
-- [x] Existing `/api/health` and `/api/codebases` preserved
-- [x] Error mapping: validation → 400, pipeline failures → 500
-
----
-
-## MVP-014: CLI Integration via FastAPI Backend ✅
-
-### Plain-English Summary
-- Implemented the first production CLI path as a thin FastAPI client, so CLI no longer duplicates retrieval/rerank/generation orchestration logic.
-- Added typed transport helpers in `src/api/client.py` for `POST /api/query` and `POST /api/stream` with deterministic validation, timeout handling, and response parsing into `QueryResponse`.
-- Implemented a Click-based `query` command in `src/cli/main.py` that forwards CLI options to the API, renders answer metadata/citations, and surfaces actionable non-zero exits.
-- Added focused CLI integration tests in `tests/test_cli.py` for success path, option passthrough, validation, API/transport failures, and stream behavior.
-
-### Metadata
-- **Status:** Complete
-- **Date:** Mar 4, 2026
-- **Ticket:** MVP-014
-- **Branch:** `feature/mvp-014-cli-api-integration`
-- **Commit:** N/A (not committed in this session)
-
-### Scope
-- Implement API transport-only helpers in `src/api/client.py` (no retrieval/rerank/generation logic).
-- Implement CLI query command wiring in `src/cli/main.py` that calls API client helpers.
-- Add CLI integration tests in `tests/test_cli.py` using mocked API client behavior.
-- Document runtime assumptions and error semantics for CLI->API integration.
-
-### Technical Implementation
-- Added typed API client contract:
-  - `QueryRequestPayload` dataclass for query/stream payload assembly
-  - `post_query(...) -> QueryResponse`
-  - `stream_query(...) -> Iterator[str]`
-- Added deterministic client error taxonomy:
-  - `ApiClientValidationError`
-  - `ApiClientTransportError`
-  - `ApiClientHTTPError` (with `status_code` and `detail`)
-  - `ApiClientResponseError`
-- Added strict response parsing from JSON to `QueryResponse`/`RetrievedChunk`:
-  - confidence enum normalization (`HIGH`/`MEDIUM`/`LOW`)
-  - citation-ready chunk field validation (`file_path`, line range, etc.)
-  - typed failure on malformed payload shape
-- CLI query command now accepts:
-  - query text + `--feature`, `--codebase`, `--top-k`, `--language`, `--model`, `--stream`
-- CLI render behavior:
-  - non-stream mode prints answer, confidence, model, latency, and chunk citations
-  - stream mode prints token chunks as they arrive and terminates with newline
-
-### CLI->API Runtime Assumptions
-- Base URL comes from `LEGACYLENS_API_URL` (via `src/config.py`), with trailing slash normalization.
-- Deterministic timeout is set to `30.0s` per request in the API client helper defaults.
-- Error mapping in CLI:
-  - client validation -> usage error (non-zero)
-  - transport failures -> `Transport error: ...` (non-zero)
-  - API non-2xx -> `API request failed (<status>): <detail>` (non-zero)
-  - malformed response payload -> `Invalid API response: ...` (non-zero)
-
-### Testing
-- Added **9 tests** in `tests/test_cli.py`:
-  - successful CLI query path with response rendering
-  - option passthrough for `feature`, `codebase`, `top_k`, `language`, `model`
-  - blank query validation
-  - invalid `top_k` handling
-  - transport and API failure error output
-  - stream-mode endpoint path and response-error behavior
-- TDD flow executed:
-  1. tests written first
-  2. initial run failed during import (expected; client/CLI placeholders were empty)
-  3. implementation added in `src/api/client.py` and `src/cli/main.py`
-  4. re-run passed (`9 passed`)
-- Full regression run:
-  - `.venv/bin/python -m pytest tests/ -v` -> `167 passed`, `2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures)
-- Lint run:
-  - `.venv/bin/ruff check . --fix` -> fails on pre-existing `E402` import-order issues in `src/ingestion/indexer.py` (outside MVP-014 scope)
-
-### Files Changed
-- **Modified:** `src/api/client.py`
-- **Modified:** `src/cli/main.py`
-- **Modified:** `tests/test_cli.py`
-- **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
-
----
-
-## MVP-015: Render Deployment Hardening ✅
-
-### Plain-English Summary
-- Hardened Render deployment config and operational docs so the MVP stack runs reliably on Render as a production API service.
-- Added deployment-readiness tests for `/api/health` and `/api/codebases`; updated Dockerfile, render.yaml, ENVIRONMENT.md, and README.
-- Success: deterministic health/codebases contracts, documented verification flow, and stable baseline for MVP-016 smoke tests.
-
-### Metadata
-- **Status:** Complete
-- **Date:** Mar 4, 2026
-- **Ticket:** MVP-015
-- **Branch:** `feature/mvp-015-render-deployment-hardening` (create before commit)
-- **Commit:** Pending (git not initialized in session)
-
-### Scope
-- Dockerfile: add `PYTHONUNBUFFERED=1` for container logging
-- render.yaml: add header comments documenting required env vars and defaults
-- tests/test_api.py: add `test_health_returns_deterministic_200_payload`, `test_codebases_returns_deterministic_200_payload`
-- Docs/reference/ENVIRONMENT.md: exact deployment flow, verification commands, cold-start expectations
-- README.md: deployment reference aligned with actual setup
-
-### Technical Implementation
-- **Health contract:** `GET /api/health` → `200` + `{"status":"ok"}` (unchanged; kept lightweight for cold start)
-- **Codebases contract:** `GET /api/codebases` → `200` + `{"codebases":[{name,language,description},...]}`
-- **Tests:** Both routes asserted for status code and payload shape; no heavy startup coupling
-- **Docs:** Placeholder `https://<your-render-service>.onrender.com` for generic verification; cold start 10–30s documented
-
-### Testing
-- `pytest tests/test_api.py -v` → 12 passed (including 2 new deployment-readiness tests)
-- Docker build verified: `docker build -t legacylens-api:local .` succeeds
-
-### Files Changed
-- **Modified:** `Dockerfile`, `render.yaml`, `tests/test_api.py`, `Docs/reference/ENVIRONMENT.md`, `README.md`, `Docs/tickets/DEVLOG.md`
-
-### Acceptance Criteria
-- [x] Render deployment config hardened and consistent with repo runtime
-- [x] Health + codebases operational routes stable and tested
-- [x] Deployment/readiness tests in tests/test_api.py
-- [x] Environment/deployment docs updated with exact verification steps
-- [x] DEVLOG updated with MVP-015 implementation entry
-- [ ] Feature branch pushed and PR opened (git not initialized)
-
-### Next Steps
-- Initialize git, create `feature/mvp-015-render-deployment-hardening`, commit, push, open PR
-- **MVP-016:** Run full end-to-end smoke test suite (10 manual production queries)
-
----
-
-## MVP-016: End-to-End Smoke Test 🚧
-
-### Plain-English Summary
-- Kickstarted MVP-016: created smoke test checklist, query list, run script, and executed 10 queries against deployed API.
-- Health and codebases endpoints return 200; query endpoint returns 500 with "retrieval failed: Failed to embed query."
-- **Blocking issue:** Voyage AI embedding API failing — likely `VOYAGE_API_KEY` missing/invalid on Render (or local .env). Fix env vars, re-run smoke test.
-
-### Metadata
-- **Status:** In progress (blocked on embedding config)
-- **Date:** Mar 4, 2026
-- **Ticket:** MVP-016
-- **Branch:** `feature/mvp-016-smoke-test`
-
-### Scope
-- Run 10 manual production queries against deployed Render API
-- Cover 3–4+ features, codebase gnucobol
-- Record results, fix blocking bugs, update DEVLOG
-
-### Key Achievements
-- Created `Docs/reference/SMOKE_TEST.md` with checklist and curl commands
-- Created `evaluation/smoke_test_queries.json` with 10 reproducible queries
-- Created `evaluation/run_smoke_test.py` (httpx-based runner)
-- Health: `GET https://gauntlet-assignment-3.onrender.com/api/health` → 200
-- Codebases: `GET .../api/codebases` → 200, 5 codebases
-- Query: all 10 return 500 — "retrieval failed: Failed to embed query"
-
-### Errors / Bugs / Problems
-- **Embedding failure:** All `/api/query` requests return 500. Error: `retrieval failed: Failed to embed query.`
-- **Root cause:** Voyage AI API call fails — `VOYAGE_API_KEY` likely missing or invalid in Render dashboard (or .env for local Docker).
-- **Fix:** Verify `VOYAGE_API_KEY` in Render Environment tab; see `Docs/reference/ENVIRONMENT.md` for verification commands.
-
-### Files Changed
-- **Created:** `Docs/reference/SMOKE_TEST.md`, `evaluation/smoke_test_queries.json`, `evaluation/run_smoke_test.py`
-- **Modified:** `Docs/tickets/DEVLOG.md` (this entry)
-
-### Next Steps
-- Fix `VOYAGE_API_KEY` on Render (and/or local .env)
-- Re-run `API_URL="https://gauntlet-assignment-3.onrender.com" python evaluation/run_smoke_test.py`
-- Target: ≥8/10 pass with cited answers
-- Update DEVLOG with final results when done
-
----
-
 ## Timeline
 
 | Phase     | Days                  | Target                                                                      |
@@ -1545,5 +1318,49 @@ Normalization assumptions:
 ### Notes
 - Full-suite failures are unchanged and pre-existing in `tests/test_cobol_parser.py`.
 - Repository-wide lint errors are pre-existing in `src/ingestion/indexer.py` and outside MVP-012 scope.
+
+---
+
+## MVP-017: Web Interface on Vercel
+
+- **Status:** COMPLETE
+- **Branch:** `feature/mvp-017-web-interface`
+- **Commit:** *(see branch history)*
+
+### Scope
+- Build a publicly accessible Next.js 14 web interface for LegacyLens
+- Deploy to Vercel with proxy API routes to the Render backend
+- All 8 code understanding features selectable in the UI
+- Responsive dark-themed design for developer tool UX
+
+### Technical Implementation
+- Created `frontend/` with Next.js 14 (App Router), TypeScript, Tailwind CSS
+- API route proxies in `app/api/query/route.ts` and `app/api/health/route.ts`:
+  - POST proxy to Render `/api/query` with 45-second timeout for cold starts
+  - GET proxy to Render `/api/health` with same timeout
+  - Backend URL stored server-side only via `LEGACYLENS_API_URL` env var
+- Components:
+  - `Header.tsx` — title + subtitle
+  - `FeatureSelector.tsx` — pill-style selector for all 8 features
+  - `QueryInput.tsx` — text input with contextual placeholders and clickable example queries per feature
+  - `ResponsePanel.tsx` — answer display with markdown formatting, collapsible citations, confidence badge, metadata bar
+- `lib/features.ts` — full feature config (labels, descriptions, placeholders, examples)
+- `lib/types.ts` — TypeScript interfaces matching `QueryResponseSchema`
+- Dark theme using Tailwind `slate` palette with `emerald` accents
+- Loading state with warm-up messaging, error state with retry, empty state
+
+### Files Changed
+- **Created:** `frontend/` (entire Next.js project)
+- **Modified:** `README.md` (Vercel URL, frontend setup instructions)
+- **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
+
+### Acceptance Criteria
+- [x] Next.js app in `frontend/` with feature selector, query input, response display
+- [x] All 8 features selectable with contextual placeholders and example queries
+- [x] API route proxy passes through backend response directly
+- [x] Loading and error states handle cold starts gracefully
+- [x] README updated with frontend setup instructions
+- [x] DEVLOG updated with MVP-017 entry
+- [ ] Deployed to Vercel with public URL (requires Vercel CLI / GitHub integration)
 
 ---

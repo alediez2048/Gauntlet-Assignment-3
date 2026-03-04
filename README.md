@@ -56,10 +56,13 @@ python -m src.cli.main query "What does CALCULATE-INTEREST do?"
 
 ### Web Interface
 
+**Live:** [LegacyLens on Vercel](https://legacylens.vercel.app) *(URL updated after deployment)*
+
 ```bash
 cd frontend
+cp .env.example .env.local   # Set LEGACYLENS_API_URL
 npm install
-npm run dev
+npm run dev                   # http://localhost:3000
 ```
 
 ## Architecture
@@ -68,7 +71,7 @@ See [system-design.md](Docs/architecture/system-design.md) for the full data flo
 
 **Tech Stack:** Python 3.11 · FastAPI · Qdrant · Voyage Code 2 · GPT-4o · Next.js 14 · Click + Rich
 
-**Deployed:** API on Render (`render.yaml` + `Dockerfile`). See [Environment Guide](Docs/reference/ENVIRONMENT.md) for deployment and verification steps.
+**Deployed:** API on Render (`render.yaml` + `Dockerfile`). Web UI on Vercel (Next.js 14). See [Environment Guide](Docs/reference/ENVIRONMENT.md) for deployment and verification steps.
 
 ## Documentation
 
