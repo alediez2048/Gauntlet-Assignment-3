@@ -1550,3 +1550,146 @@ Normalization assumptions:
 - Mirroring the COBOL preprocessor architecture (same function signature, same ProcessedFile output, same helper patterns) keeps the codebase consistent and makes the downstream chunker's job predictable.
 
 ---
+
+## G4-002: Fortran Subroutine Chunker ✅
+
+### Plain-English Summary
+- Implemented the Fortran subroutine chunker in `src/ingestion/fortran_chunker.py` — the Fortran equivalent of the COBOL paragraph chunker
+- Detects SUBROUTINE, FUNCTION, PROGRAM, MODULE, and BLOCK DATA program unit boundaries (case-insensitive)
+- Handles typed functions (`INTEGER FUNCTION`, `DOUBLE PRECISION FUNCTION`) and prefixed subroutines (`RECURSIVE SUBROUTINE`)
+- END statement detection differentiates bare `END`, `END SUBROUTINE name`, etc. from `ENDIF`/`ENDDO`
+- Adaptive size enforcement: merges small adjacent chunks (< 64 tokens), splits oversized chunks (> 768 tokens)
+- Dependency extraction for CALL, USE, and INCLUDE patterns with deduplication
+- Metadata schema uses `paragraph_name` key for Qdrant index compatibility
+- Fallback chunking for code not inside any program unit
+- TDD workflow followed: 34 tests written first, confirmed failing, then implementation made them all pass
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 4, 2026
+- **Ticket:** G4-002
+- **Branch:** `feature/g4-002-fortran-chunker`
+
+### Scope
+- Create `src/ingestion/fortran_chunker.py` with `chunk_fortran()` mirroring the COBOL chunker architecture
+- Create `tests/test_fortran_chunker.py` with comprehensive TDD tests
+- Provide stable public API for the ingestion pipeline (G4-003/004/005) to consume
+
+### Key Achievements
+- 1 public function with clean, stable signature for downstream consumers
+- 12 private helper functions with full type hints
+- 34 unit tests across 5 test classes covering all boundary detection, metadata, dependency, sizing, and fallback behaviors
+- Zero regressions — full test suite: 246 passed, 2 failed (pre-existing chardet issues in COBOL tests)
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `chunk_fortran` | `(processed_file: ProcessedFile, codebase: str = "gfortran") -> list[Chunk]` | Unit-boundary Fortran chunks |
+
+#### Key Helpers
+
+| Helper | Purpose |
+|--------|---------|
+| `_get_tokenizer()` | Cached tiktoken tokenizer |
+| `_count_tokens(text)` | Token counting with fallback |
+| `_parse_unit_header(line)` | Extract unit type and name from header line |
+| `_is_end_statement(line)` | Detect END statements without matching ENDIF/ENDDO |
+| `_detect_unit_boundaries(lines)` | Scan for all program unit boundaries |
+| `_unit_type_to_chunk_type(unit_type)` | Map Fortran unit types to chunk_type strings |
+| `_build_chunk_from_block(block, lines, file_path, codebase)` | Construct Chunk from a unit block |
+| `_merge_small_chunks(chunks)` | Merge adjacent chunks below min token threshold |
+| `_split_chunk_by_size(chunk, max_tokens)` | Split oversized chunks on line boundaries |
+| `_split_oversized_chunks(chunks)` | Apply splitting to all chunks |
+| `_extract_dependencies(chunk_text)` | Parse CALL/USE/INCLUDE dependencies |
+| `_build_chunk_metadata(chunk)` | Build retrieval payload metadata |
+| `_enrich_chunk(chunk)` | Attach dependencies + metadata |
+
+#### Unit Header Regex
+Handles all real-world variations: `RECURSIVE SUBROUTINE`, `DOUBLE PRECISION FUNCTION`, `INTEGER FUNCTION`, `PURE ELEMENTAL FUNCTION`, lowercase/mixed case, `BLOCK DATA`, etc.
+
+#### END Pattern
+Uses `\s` after `END` (or end-of-line) to avoid false-matching `ENDIF`, `ENDDO`, `ENDFILE`.
+
+#### Processing Pipeline
+1. Split `processed_file.code` into lines
+2. Scan for unit headers and END statements → build `_UnitBlock` list
+3. Handle gaps (code between units) as `file_block` fallback chunks
+4. Build initial `Chunk` objects from blocks
+5. Merge small adjacent chunks (< 64 tokens)
+6. Split oversized chunks (> 768 tokens) on line boundaries
+7. Enrich each chunk with dependencies and metadata
+8. Return final chunk list
+
+#### Metadata Schema Per Chunk
+```python
+{
+    "paragraph_name": chunk.name,     # Qdrant index compat
+    "division": chunk.division,       # "SUBROUTINE", "FUNCTION", etc.
+    "file_path": chunk.file_path,
+    "line_start": chunk.line_start,
+    "line_end": chunk.line_end,
+    "chunk_type": chunk.chunk_type,
+    "language": chunk.language,
+    "codebase": chunk.codebase,
+}
+```
+
+#### Dependency Extraction
+- `CALL sub-name(args)` → extracted sub-name (uppercase)
+- `USE module-name` → extracted module-name (uppercase)
+- `INCLUDE 'filename'` → extracted filename (case-preserved)
+- Deduplicated while preserving first-seen order
+
+### Issues & Solutions
+- **Multi-unit test data too small:** Initial test data for multi-unit files had units small enough to trigger merging (< 64 tokens each), causing tests to see merged chunks instead of individual ones. Fixed by generating larger test data (29+ assignment lines per unit) so each unit exceeds the merge threshold independently.
+
+### Errors / Bugs / Problems
+- None beyond the test data sizing issue (addressed immediately)
+
+### Testing
+- **34 tests** in `tests/test_fortran_chunker.py`, all passing
+- **Test classes:** TestUnitBoundaryDetection (11), TestChunkContractAndMetadata (12), TestDependencyExtraction (6), TestSizeEnforcement (3), TestFallbackBehavior (2)
+- **Coverage:** SUBROUTINE, FUNCTION, PROGRAM, MODULE, BLOCK DATA detection; typed functions; recursive subroutines; END statements; multi-unit files; metadata schema; `paragraph_name` key compat; division values; CALL/USE/INCLUDE dependencies; deduplication; empty files; merge/split sizing; fallback chunking
+- **Full suite:** 248 collected, 246 passed, 2 failed (pre-existing `test_cobol_parser.py::TestEncodingDetection`)
+- **Lint:** `ruff check` — all checks passed on G4-002 files
+
+### Files Changed
+- **Created:** `src/ingestion/fortran_chunker.py` — full Fortran chunker implementation
+- **Created:** `tests/test_fortran_chunker.py` — 34 unit tests across 5 test classes
+- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
+
+### Acceptance Criteria
+- [x] `src/ingestion/fortran_chunker.py` implements `chunk_fortran()` with unit-boundary chunking
+- [x] Detects SUBROUTINE, FUNCTION, PROGRAM, MODULE, BLOCK DATA boundaries
+- [x] Handles typed functions (`INTEGER FUNCTION`, `DOUBLE PRECISION FUNCTION`, etc.)
+- [x] END statement detection (bare `END`, `END SUBROUTINE name`, etc.) without false-matching `ENDIF`/`ENDDO`
+- [x] Adaptive size enforcement: merge < 64 tokens, split > 768 tokens
+- [x] Dependency extraction: CALL, USE, INCLUDE
+- [x] Metadata schema matches COBOL chunker (uses `paragraph_name` key for Qdrant index compat)
+- [x] Returns `list[Chunk]` with `language="fortran"` and correct `chunk_type`
+- [x] Fallback chunking for code not inside any program unit
+- [x] Unit tests written first (TDD) and all passing
+- [x] No regressions in existing test suite
+- [x] DEVLOG updated with G4-002 entry
+- [ ] Feature branch pushed
+
+### Performance
+- Processes a typical Fortran file in <1ms (line-by-line regex matching, no external API calls)
+- Token counting via cached tiktoken encoder adds negligible overhead
+- Adaptive sizing (merge/split) runs in O(n) per chunk list
+
+### Next Steps
+- **G4-003** (Ingest GNU Fortran) can begin — uses `preprocess_fortran()` → `chunk_fortran()` → `embed_chunks()` → `index_chunks()`
+- **G4-004** (Ingest LAPACK) and **G4-005** (Ingest BLAS) follow the same pipeline
+- **G4-006** (Ingest OpenCOBOL Contrib) can start in parallel since it uses the existing COBOL pipeline
+
+### Learnings
+- Fortran program unit boundaries are much cleaner than COBOL paragraph boundaries — explicit `END` statements with optional keyword+name make boundary detection more reliable
+- The `\s` after `END` in the regex is critical to avoid matching `ENDIF`, `ENDDO`, `ENDFILE` — these Fortran keywords would create spurious unit closings
+- Mirroring the COBOL chunker architecture exactly (same helpers, same pipeline stages, same metadata schema) makes the codebase predictable and keeps downstream modules (embedder, indexer, retrieval) language-agnostic
+- Test data for multi-unit and multi-type files must be sized above the merge threshold (64 tokens per unit) or tests will see merged chunks instead of individual ones
+
+---
