@@ -1,6 +1,7 @@
 """Compute average token count per chunk to size batches optimally."""
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -12,7 +13,6 @@ from src.ingestion.fortran_parser import preprocess_fortran
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "raw" / "gfortran"
 
-import logging
 logging.disable(logging.CRITICAL)
 
 total_tokens = 0

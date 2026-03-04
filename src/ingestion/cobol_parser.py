@@ -32,14 +32,47 @@ _DIVISION_KEYWORDS = (
 )
 
 
+def _is_probably_binary(raw_bytes: bytes) -> bool:
+    """Return True when bytes look like binary data instead of source text."""
+    if not raw_bytes:
+        return False
+    if b"\x00" in raw_bytes:
+        return True
+
+    text_like_count = 0
+    for value in raw_bytes:
+        if value in (9, 10, 13) or 32 <= value <= 126:
+            text_like_count += 1
+
+    return (text_like_count / len(raw_bytes)) < 0.75
+
+
 def _detect_encoding(raw_bytes: bytes, file_path: str) -> str | None:
     """Detect file encoding via chardet, returning None if confidence is too low."""
     if not raw_bytes:
         return "utf-8"
 
+    if _is_probably_binary(raw_bytes):
+        logger.warning("Binary-like file content for %s — skipping", file_path)
+        return None
+
+    try:
+        raw_bytes.decode("ascii")
+        return "utf-8"
+    except UnicodeDecodeError:
+        pass
+
     detection = chardet.detect(raw_bytes)
     confidence: float = detection.get("confidence", 0.0) or 0.0
     encoding: str | None = detection.get("encoding")
+
+    if encoding is None:
+        logger.warning(
+            "Encoding not detected for %s (confidence %.2f) — skipping",
+            file_path,
+            confidence,
+        )
+        return None
 
     if confidence < _ENCODING_CONFIDENCE_THRESHOLD:
         logger.warning(

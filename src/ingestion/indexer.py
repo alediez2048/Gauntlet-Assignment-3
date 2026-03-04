@@ -6,8 +6,6 @@ import uuid
 from collections.abc import Iterator, Sequence
 from typing import TypeVar
 
-_LEGACYLENS_UUID_NAMESPACE = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
-
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PayloadSchemaType, PointStruct, VectorParams
 
@@ -19,6 +17,8 @@ from src.config import (
     QDRANT_URL,
 )
 from src.types.chunks import EmbeddedChunk
+
+_LEGACYLENS_UUID_NAMESPACE = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 REQUIRED_PAYLOAD_INDEX_FIELDS: tuple[str, ...] = (
     "paragraph_name",

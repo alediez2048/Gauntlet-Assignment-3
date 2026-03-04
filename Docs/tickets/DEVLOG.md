@@ -212,6 +212,98 @@ Tickets reordered by dependency chain. Original numbering preserved for traceabi
 
 ---
 
+## G4-005: Ingest BLAS Source ✅
+
+### Plain-English Summary
+- Acquired BLAS source into `data/raw/blas/` using the official Netlib archive (`https://www.netlib.org/blas/blas.tgz`) and extracted it under `data/raw/blas/netlib-blas/`
+- Added `scripts/run_ingest_blas.py` to run the reusable `ingest_codebase()` flow for `codebase="blas"` and `language="fortran"`
+- Ran the required pre-embed dry scan (discover -> preprocess -> chunk) and validated UTF-8 encodability before embedding/indexing
+- Executed full BLAS ingestion successfully and indexed **814 BLAS chunks** into Qdrant with zero processing errors
+- Verified metadata correctness, BLAS retrieval sanity, and regression safety for existing `lapack` and `gnucobol` codebases
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 4, 2026
+- **Ticket:** G4-005
+- **Branch:** `feature/g4-005-ingest-blas`
+
+### Scope
+- Populate `data/raw/blas/` with a dedicated BLAS corpus
+- Run full ingest pipeline via reusable `ingest_codebase()` from G4-003
+- Verify Qdrant counts/metadata and retrieval behavior for `codebase="blas"`
+
+### Key Achievements
+- Pipeline reuse validated without modifying ingestion internals
+- Corpus thresholds exceeded (`50+` files and `5,000+` LOC minimums)
+- Pre-embed UTF-8 sanity check passed across all generated chunks
+- BLAS points indexed and queryable with expected routine-level relevance
+- Existing indexed codebases remained queryable after BLAS ingest
+
+### Corpus Validation
+- **Source:** `https://www.netlib.org/blas/blas.tgz`
+- **Supported files (discoverable Fortran):** 163 (`.f` = 155, `.f90` = 8)
+- **LOC (discoverable Fortran):** 73,036
+- **Readability:** 0 unreadable files / 0 preprocess errors in dry scan
+- **Git hygiene:** raw corpus remains untracked (`git status -- data/raw/blas` empty)
+
+### Pre-embed Encoding Sanity Check
+- **Dry scan results:** 163 files discovered, 163 files processed, 814 chunks created
+- **Encoding observations:** `windows-1252` detected across files (ASCII-compatible corpus)
+- **UTF-8 verification:** 0 non-UTF-8-encodable chunk payloads
+- **Mitigation required:** None (no encoding workaround applied for BLAS)
+
+### Ingestion Run Results
+- **files_found:** 163
+- **files_processed:** 163
+- **chunks_created:** 814
+- **chunks_embedded:** 814
+- **chunks_indexed:** 814
+- **errors:** 0
+- **skipped_empty:** 0
+- **Elapsed time:** ~159s (~2m39s)
+
+### Issues & Solutions
+- **Issue:** Recommended source URL `https://github.com/Reference-LAPACK/blas` returned repository-not-found
+- **Solution:** Switched to official Netlib BLAS archive source (`blas.tgz`) while keeping a dedicated `data/raw/blas/` corpus boundary
+- **Validation:** Corpus thresholds, dry scan, full ingest, and Qdrant checks all passed with Netlib source
+
+### Verification
+- **Qdrant count (blas):** 814 points (matches `chunks_indexed`)
+- **Qdrant count (lapack):** 12,515 points (existing corpus unaffected)
+- **Qdrant count (gnucobol):** 3 points (existing corpus unaffected)
+- **Metadata spot-check (5 samples):** all had `language="fortran"`, `codebase="blas"`, valid `chunk_type`, and non-empty routine `name`
+- **Search sanity (blas filter):**
+  - `What does SAXPY do?` -> top-1 `SAXPY` from `saxpy.f`
+  - `How does DGEMM multiply matrices?` -> `DGEMM` appears in top-3 with BLAS test harness helpers ranked above
+  - `Where is DAXPY implemented?` -> top-1 `DAXPY` from `daxpy.f`
+- **Regression sanity:** LAPACK (`DGETRF`) and GnuCOBOL (`GOBACK+REPOSITORY`) queries still return filtered results
+
+### Testing
+- **Lint:** `ruff check . --fix` -> fails with 5 pre-existing `E402` import-order issues in `scripts/avg_chunk_tokens.py` and `src/ingestion/indexer.py`
+- **Tests:** `python -m pytest tests/ -v` -> 259 passed, 2 failed (pre-existing COBOL encoding tests in `tests/test_cobol_parser.py::TestEncodingDetection`)
+- **Regression status:** No new lint/test failures introduced by G4-005 changes
+
+### Files Changed
+- **Created:** `scripts/run_ingest_blas.py` — ingestion runner script
+- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
+- **Added (gitignored):** `data/raw/blas/netlib-blas/` and `data/raw/blas/blas.tgz` — BLAS source corpus
+
+### Acceptance Criteria
+- [x] `data/raw/blas/` populated with BLAS source
+- [x] File count and LOC thresholds verified
+- [x] Ingestion pipeline executed successfully
+- [x] Qdrant contains `codebase="blas"` points with correct metadata
+- [x] Existing codebase data unaffected
+- [x] DEVLOG updated with G4-005 entry
+- [ ] Feature branch pushed
+
+### Next Steps
+- Push `feature/g4-005-ingest-blas` to remote
+- Start G4-006 (OpenCOBOL Contrib ingestion) to reach 5/5 indexed codebases
+- Proceed to G4-007 multi-codebase query validation with expanded Fortran coverage
+
+---
+
 ## GFA Final Scope (Revised)
 
 ### Post-MVP-017 Assessment
