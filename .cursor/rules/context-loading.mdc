@@ -1,0 +1,44 @@
+---
+description: Mandatory context loading before starting any ticket work
+alwaysApply: true
+---
+
+# Context Loading (MANDATORY)
+
+## Before Writing ANY Code
+
+Read these files in order before making any changes:
+
+1. **Ticket primer** — `Docs/tickets/<TICKET-ID>-primer.md`
+   - Understand the goal, deliverables checklist, and Definition of Done
+   - Note the "Files to Modify" and "Files You Should NOT Modify" sections
+   - Note the "Files You Should READ for Context" section
+
+2. **DEVLOG** — `Docs/tickets/DEVLOG.md`
+   - Understand what was done in prior tickets
+   - Confirm prerequisite tickets are complete before starting
+
+3. **Files you are about to modify** — read them in full before editing
+   - Never edit a file you haven't read first
+   - Understand existing code structure before adding to it
+
+4. **Type contracts** — `src/types/chunks.py`, `src/types/responses.py`, `src/types/features.py`
+   - Understand the dataclasses your code must produce or consume
+   - Do not change type contracts unless the ticket explicitly requires it
+
+5. **Config** — `src/config.py`
+   - Know what constants and env vars are already available
+   - Do not duplicate or redefine existing config values
+
+## During Implementation
+
+- If the primer references cursor rules to follow, read those rules
+- If the primer references other source files for context, read them
+- If you need to understand how a function works, read its implementation — do not guess
+
+## Do NOT
+
+- Start writing code before reading the primer
+- Assume what a file contains without reading it
+- Guess at function signatures, return types, or dataclass fields
+- Skip reading the DEVLOG — it contains critical decisions from prior tickets

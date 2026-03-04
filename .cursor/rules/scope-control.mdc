@@ -1,0 +1,37 @@
+---
+description: Strict scope control to prevent unauthorized changes
+alwaysApply: true
+---
+
+# Scope Control (MANDATORY)
+
+## Only Do What the Ticket Asks
+
+- Read the primer doc for the current ticket BEFORE writing any code
+- Implement ONLY the deliverables listed in the primer's checklist
+- If the ticket says "modify file X", only modify file X
+- If the ticket says "add tests for Y", only add tests for Y
+
+## Do NOT
+
+- Refactor code that isn't part of the current ticket
+- Add docstrings, type hints, or comments to code you didn't write or change
+- Rename variables or functions outside your ticket scope
+- "Clean up" imports, formatting, or structure in unrelated files
+- Add features, utilities, or helpers not specified in the ticket
+- Modify configuration files unless the ticket explicitly requires it
+- Add packages to requirements.txt unless the ticket explicitly requires it
+- Import modules from tickets that haven't been implemented yet
+
+## When You Find Issues Outside Your Scope
+
+- Do NOT fix bugs in other modules
+- Do NOT refactor code that "could be better"
+- Note the issue in your commit message or PR description
+- Let the reviewer decide whether to create a follow-up ticket
+
+## File Protection
+
+- Check the primer's "Files You Should NOT Modify" section before editing anything
+- If a file is not listed in "Files to Modify", do not touch it
+- Never modify completed ticket modules unless the current ticket explicitly requires it
