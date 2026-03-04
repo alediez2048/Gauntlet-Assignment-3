@@ -7,6 +7,114 @@
 
 ---
 
+## MVP-008: Qdrant Indexer Module ✅
+
+### Plain-English Summary
+- Implemented `index_chunks()` end-to-end in `src/ingestion/indexer.py` to persist `EmbeddedChunk` vectors and payloads into Qdrant
+- Added idempotent shared-collection setup with `EMBEDDING_DIMENSIONS` (1536) and cosine distance
+- Added required payload indexes (`paragraph_name`, `division`, `file_path`, `language`, `codebase`) with safe idempotent handling
+- Added deterministic `PointStruct` mapping (`id=chunk_id`) with metadata/content payload normalization and embedding dimension validation
+- Added strict batch upsert flow and deterministic ordering guarantees for predictable testability
+- Added 12 focused unit tests in `tests/test_indexer.py` and validated red->green TDD cycle
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-008
+
+### Scope
+- Implement Qdrant indexer module for ingestion outputs
+- Preserve strict contract: `index_chunks(embedded_chunks: list[EmbeddedChunk], collection_name: str = QDRANT_COLLECTION_NAME, batch_size: int = EMBEDDING_BATCH_SIZE) -> int`
+- Keep module ingestion-only (no retrieval, generation, or API route logic)
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `index_chunks` | `(embedded_chunks: list[EmbeddedChunk], collection_name: str = QDRANT_COLLECTION_NAME, batch_size: int = EMBEDDING_BATCH_SIZE) -> int` | Count of indexed points |
+
+#### Helper Signatures Added
+
+| Helper | Purpose |
+|--------|---------|
+| `_build_qdrant_client() -> QdrantClient` | Build client from `QDRANT_URL` and `QDRANT_API_KEY` |
+| `_ensure_collection(client: QdrantClient, collection_name: str) -> None` | Create collection when missing with 1536/cosine config |
+| `_ensure_payload_indexes(client: QdrantClient, collection_name: str) -> None` | Ensure required filter indexes exist idempotently |
+| `_validate_embedding(embedding: list[float], expected_dimensions: int = EMBEDDING_DIMENSIONS) -> None` | Enforce vector dimension contract |
+| `_build_payload(embedded_chunk: EmbeddedChunk) -> dict[str, str \| int \| list[str]]` | Build retrieval-ready payload with deterministic fallbacks |
+| `_build_point(embedded_chunk: EmbeddedChunk) -> PointStruct` | Convert chunk + embedding into Qdrant point |
+| `_batched(items: Sequence[T], size: int) -> Iterator[list[T]]` | Deterministic batch slicing |
+| `_upsert_batch(client: QdrantClient, collection_name: str, points: list[PointStruct]) -> None` | Batch upsert with typed error surfacing |
+
+#### Collection and Index Assumptions
+- Collection existence is checked first; creation only occurs when missing
+- Collection vector config is fixed to:
+  - `size=EMBEDDING_DIMENSIONS`
+  - `distance=Distance.COSINE`
+- Payload index creation is idempotent:
+  - repeated calls that report "already exists/already indexed" are treated as success
+- All upserts are batch-based; no one-point network calls in a per-item loop
+
+#### Payload Schema Stored Per Point
+
+```python
+{
+    "content": chunk.content,
+    "file_path": file_path,
+    "line_start": line_start,
+    "line_end": line_end,
+    "name": chunk.name,
+    "paragraph_name": paragraph_name,
+    "division": division,
+    "chunk_type": chunk_type,
+    "language": language,
+    "codebase": codebase,
+    "dependencies": chunk.dependencies,
+}
+```
+
+### Testing
+- Added **12 tests** in `tests/test_indexer.py`
+- Validated TDD sequence:
+  1. Tests written first
+  2. Initial run failed at collection/import (expected, empty indexer module)
+  3. Implementation added in `src/ingestion/indexer.py`
+  4. Re-run passed (`12 passed`)
+- Coverage includes:
+  - return contract (`int` count)
+  - empty input behavior (no client/upsert calls)
+  - missing `QDRANT_URL` configuration error
+  - collection create/no-recreate behavior
+  - required payload index creation + idempotent already-exists handling
+  - batching behavior (`1` and `257` chunk scenarios)
+  - deterministic point mapping (`id`, `vector`, payload fields)
+  - embedding dimension mismatch handling
+  - typed surfacing of upsert failures
+  - invalid batch size handling
+
+### Files Changed
+- **Modified:** `src/ingestion/indexer.py` - MVP-008 Qdrant indexing implementation
+- **Added:** `tests/test_indexer.py` - 12 MVP-008 unit tests
+- **Updated:** `Docs/tickets/DEVLOG.md` - this entry
+
+### Acceptance Criteria
+- [x] `src/ingestion/indexer.py` implemented with `index_chunks()` and helper logic
+- [x] Qdrant collection setup is idempotent and dimension-correct
+- [x] Required payload indexes created for retrieval filters
+- [x] Upserts run in deterministic batches with stable point IDs
+- [x] Payload schema includes retrieval/citation-critical fields
+- [x] Unit tests added and passing in `tests/test_indexer.py`
+- [x] TDD flow followed (failing state observed before implementation)
+- [x] DEVLOG updated with MVP-008 entry
+
+### Notes
+- `tests/test_indexer.py` passes fully in local run.
+- Full regression run still reports 2 failing tests in `tests/test_cobol_parser.py` (`TestEncodingDetection`), matching pre-existing encoding-detection/runtime sensitivity and outside MVP-008 scope.
+
+---
+
 ## MVP-007: Batch Embedding Module ✅
 
 ### Plain-English Summary
