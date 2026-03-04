@@ -88,7 +88,7 @@ Tickets reordered by dependency chain. Original numbering preserved for traceabi
 | ------ | ----- | ---- | ------ |
 | G4-006 | Ingest OpenCOBOL Contrib | Uses existing COBOL pipeline — can start immediately | TODO |
 | G4-003 | Ingest GNU Fortran | Download + preprocess + embed + index (needs G4-001/002) | TODO |
-| G4-004 | Ingest LAPACK | Largest Fortran codebase (needs G4-001/002) | TODO |
+| G4-004 | Ingest LAPACK | Largest Fortran codebase (needs G4-001/002) | DONE |
 | G4-005 | Ingest BLAS | Smallest Fortran, good validation target (needs G4-001/002) | TODO |
 
 **Phase 3 — Multi-Codebase + Context Assembly (depends on Phase 2)**
@@ -120,6 +120,95 @@ Tickets reordered by dependency chain. Original numbering preserved for traceabi
 | ------ | ----- | ---- | ------ |
 | G4-020 | Architecture document | System design, diagrams, metrics from eval run | TODO |
 | G4-021 | Cost analysis document | Real API spend + 4-tier projections (100/1K/10K/100K users) | TODO |
+
+---
+
+## G4-004: Ingest LAPACK Source ✅
+
+### Plain-English Summary
+- Acquired LAPACK source from the official GitHub repo (`Reference-LAPACK/lapack`) into `data/raw/lapack/lapack-source/` using a shallow clone (`--depth 1`)
+- Validated corpus size and quality: 3,600 supported Fortran files (`.f`: 3,568, `.f90`: 32) and 1,571,395 LOC, with both fixed-form and free-form present
+- Created `scripts/run_ingest_lapack.py` to execute `ingest_codebase()` for `codebase="lapack"` and `language="fortran"`
+- First full ingestion attempt failed during embedding due to a UTF-8 payload error caused by `chardet` mis-detecting 4 LAPACK files as `utf-7`
+- Applied a data-only workaround in raw corpus (UTF-8 marker comment in 4 affected files), re-ran ingestion successfully
+- Final successful run indexed **12,515 LAPACK chunks** into Qdrant with 0 errors
+- Verified retrieval sanity with a LAPACK-filtered query: `How does DGETRF perform LU factorization?` returns `DGETRF` variants at top ranks
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 4, 2026
+- **Ticket:** G4-004
+- **Branch:** `feature/g4-004-ingest-lapack`
+
+### Scope
+- Acquire LAPACK source corpus under `data/raw/lapack/`
+- Run full ingest pipeline via reusable `ingest_codebase()` from G4-003
+- Verify Qdrant counts/metadata and retrieval behavior for `codebase="lapack"`
+
+### Key Achievements
+- Source acquisition completed with no changes to ingestion pipeline code
+- Corpus thresholds exceeded by a large margin (files + LOC)
+- Full pipeline executed end-to-end: discover -> preprocess -> chunk -> embed -> index
+- Qdrant verification complete for point counts and metadata integrity
+- Regression sanity verified: existing `gnucobol` points remain queryable
+
+### Corpus Validation
+- **Source:** `https://github.com/Reference-LAPACK/lapack` (depth-1 clone)
+- **Supported files:** 3,600 (`.f` + `.f90`)
+- **LOC:** 1,571,395
+- **Extension mix:** `.f` = 3,568 (fixed-form dominant), `.f90` = 32 (free-form present)
+- **Readability:** 0 read errors in corpus scan
+- **Git hygiene:** raw corpus remains untracked (`git status -- data/raw/lapack` empty)
+
+### Ingestion Run Results
+- **files_found:** 3,600
+- **files_processed:** 3,600
+- **chunks_created:** 12,515
+- **chunks_embedded:** 12,515
+- **chunks_indexed:** 12,515
+- **errors:** 0
+- **skipped_empty:** 0
+- **Elapsed time:** ~444s (~7m24s)
+
+### Issues & Solutions
+- **Issue:** Voyage embedding rejected one batch with `InvalidRequestError` (invalid UTF-8 payload)
+- **Root cause:** `chardet` classified four LAPACK files as `utf-7` (`cgghd3.f`, `dgghd3.f`, `sgghd3.f`, `zgghd3.f`), producing surrogate characters during decode
+- **Solution:** Added a UTF-8 marker comment to those 4 raw files so encoding detection resolves to UTF-8 (confidence ~0.80), then re-ran ingestion
+- **Validation:** Post-fix chunk audit found 0 non-UTF-8-encodable chunks across all 12,515 generated chunks
+
+### Verification
+- **Qdrant count (lapack):** 12,515 points
+- **Qdrant count (gnucobol):** 3 points (existing corpus unaffected)
+- **Metadata spot-check (5 samples):** all had `language="fortran"`, `codebase="lapack"`, valid `chunk_type="subroutine"`, and proper file/line metadata
+- **Search sanity (lapack filter):** top-5 includes `DGETRF` entries from:
+  - `SRC/VARIANTS/lu/CR/dgetrf.f`
+  - `SRC/VARIANTS/lu/LL/dgetrf.f`
+  - `SRC/dgetrf.f`
+
+### Testing
+- **Lint:** `ruff check . --fix` -> no new fixes required for this ticket; 5 pre-existing E402 issues remain in `scripts/avg_chunk_tokens.py` and `src/ingestion/indexer.py`
+- **Tests:** `python -m pytest tests/ -v` -> 259 passed, 2 failed (pre-existing COBOL encoding tests in `tests/test_cobol_parser.py::TestEncodingDetection`)
+- **Regression status:** No new test failures introduced by G4-004 changes
+
+### Files Changed
+- **Created:** `scripts/run_ingest_lapack.py` — ingestion runner script
+- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
+- **Added (gitignored):** `data/raw/lapack/lapack-source/` — LAPACK source corpus
+
+### Acceptance Criteria
+- [x] `data/raw/lapack/` populated with real LAPACK source files
+- [x] Supported file count verified (3,600 — exceeds 50+ minimum and 200+ target)
+- [x] LOC verified (1,571,395 — exceeds 10,000+ minimum and 50,000+ target)
+- [x] Full ingestion pipeline executed: preprocess -> chunk -> embed -> index
+- [x] Qdrant contains LAPACK points with correct metadata
+- [x] Existing codebase data unaffected
+- [x] DEVLOG updated with G4-004 entry
+- [x] Feature branch pushed
+
+### Next Steps
+- Run G4-005 (BLAS ingestion) using the same `ingest_codebase()` flow
+- Run G4-006 (OpenCOBOL Contrib ingestion) to move to 5/5 codebases indexed
+- Begin G4-007 multi-codebase query validation now that 3 codebases are available in Qdrant
 
 ---
 
