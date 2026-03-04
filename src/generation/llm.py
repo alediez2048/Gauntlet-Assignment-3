@@ -359,7 +359,6 @@ def generate_answer(
     )
 
     confidence = _parse_confidence(output_text)
-    _extract_citations(output_text)
     latency_ms = _now_ms() - start_ms
 
     return QueryResponse(
@@ -394,9 +393,12 @@ def stream_answer(
     fallback_model = _normalize_model_name(LLM_FALLBACK_MODEL)
     client = _build_openai_client()
     primary_error: Exception | None = None
+    primary_emitted_output = False
 
     try:
-        yield from _stream_once(client=client, messages=messages, model=selected_model)
+        for chunk in _stream_once(client=client, messages=messages, model=selected_model):
+            primary_emitted_output = True
+            yield chunk
         return
     except Exception as primary_exc:
         primary_error = primary_exc
@@ -405,6 +407,10 @@ def stream_answer(
                 raise
             raise GenerationError(
                 f"Streaming generation failed using model '{selected_model}'."
+            ) from primary_exc
+        if primary_emitted_output:
+            raise GenerationError(
+                f"Streaming generation failed using model '{selected_model}' after partial output; fallback is disabled to avoid duplicate content."
             ) from primary_exc
 
     if primary_error is None:

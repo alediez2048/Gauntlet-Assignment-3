@@ -6,6 +6,7 @@ import pytest
 
 from src.generation import llm
 from src.generation.llm import (
+    GenerationConfigError,
     GenerationError,
     GenerationResponseError,
     GenerationValidationError,
@@ -460,3 +461,131 @@ def test_complete_once_raises_typed_error_on_malformed_response() -> None:
             messages=[{"role": "user", "content": "hello"}],
             model="gpt-4o",
         )
+
+
+def test_build_openai_client_raises_config_error_when_api_key_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(llm, "OPENAI_API_KEY", "")
+    with pytest.raises(GenerationConfigError, match="OPENAI_API_KEY is missing"):
+        llm._build_openai_client()
+
+
+def test_stream_answer_happy_path_yields_stream_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+    sample_retrieved_chunks: list[RetrievedChunk],
+) -> None:
+    call_order: list[str] = []
+
+    monkeypatch.setattr(
+        llm,
+        "build_messages",
+        lambda query, chunks, feature, language: [
+            {"role": "system", "content": f"{feature}:{language}"},
+            {"role": "user", "content": f"{query}:{len(chunks)}"},
+        ],
+    )
+    monkeypatch.setattr(llm, "_build_openai_client", lambda: object())
+    monkeypatch.setattr(llm, "LLM_MODEL", "gpt-4o")
+
+    def _fake_stream_once(
+        *, client: object, messages: list[dict[str, str]], model: str
+    ) -> list[str]:
+        del client, messages
+        call_order.append(model)
+        return ["Hello ", "world"]
+
+    monkeypatch.setattr(llm, "_stream_once", _fake_stream_once)
+
+    chunks = list(
+        llm.stream_answer(
+            query="Explain MAIN-LOGIC.",
+            chunks=sample_retrieved_chunks,
+        )
+    )
+
+    assert chunks == ["Hello ", "world"]
+    assert call_order == ["gpt-4o"]
+
+
+def test_stream_answer_falls_back_when_primary_fails_before_output(
+    monkeypatch: pytest.MonkeyPatch,
+    sample_retrieved_chunks: list[RetrievedChunk],
+) -> None:
+    call_order: list[str] = []
+
+    monkeypatch.setattr(
+        llm,
+        "build_messages",
+        lambda query, chunks, feature, language: [
+            {"role": "system", "content": f"{feature}:{language}"},
+            {"role": "user", "content": f"{query}:{len(chunks)}"},
+        ],
+    )
+    monkeypatch.setattr(llm, "_build_openai_client", lambda: object())
+    monkeypatch.setattr(llm, "LLM_FALLBACK_MODEL", "gpt-4o-mini")
+
+    def _fake_stream_once(
+        *, client: object, messages: list[dict[str, str]], model: str
+    ) -> list[str]:
+        del client, messages
+        call_order.append(model)
+        if model == "gpt-4o":
+            raise TimeoutError("timed out before output")
+        return ["fallback ", "answer"]
+
+    monkeypatch.setattr(llm, "_stream_once", _fake_stream_once)
+
+    chunks = list(
+        llm.stream_answer(
+            query="Explain MAIN-LOGIC.",
+            chunks=sample_retrieved_chunks,
+            model="gpt-4o",
+        )
+    )
+
+    assert chunks == ["fallback ", "answer"]
+    assert call_order == ["gpt-4o", "gpt-4o-mini"]
+
+
+def test_stream_answer_does_not_fallback_after_partial_primary_output(
+    monkeypatch: pytest.MonkeyPatch,
+    sample_retrieved_chunks: list[RetrievedChunk],
+) -> None:
+    call_order: list[str] = []
+
+    monkeypatch.setattr(
+        llm,
+        "build_messages",
+        lambda query, chunks, feature, language: [
+            {"role": "system", "content": f"{feature}:{language}"},
+            {"role": "user", "content": f"{query}:{len(chunks)}"},
+        ],
+    )
+    monkeypatch.setattr(llm, "_build_openai_client", lambda: object())
+    monkeypatch.setattr(llm, "LLM_FALLBACK_MODEL", "gpt-4o-mini")
+
+    def _fake_stream_once(
+        *, client: object, messages: list[dict[str, str]], model: str
+    ):
+        del client, messages
+        call_order.append(model)
+        if model == "gpt-4o":
+            yield "partial-output"
+            raise TimeoutError("timed out after output")
+        yield "fallback-restart"
+
+    monkeypatch.setattr(llm, "_stream_once", _fake_stream_once)
+    iterator = llm.stream_answer(
+        query="Explain MAIN-LOGIC.",
+        chunks=sample_retrieved_chunks,
+        model="gpt-4o",
+    )
+
+    first_chunk = next(iterator)
+    assert first_chunk == "partial-output"
+
+    with pytest.raises(GenerationError, match="partial output"):
+        next(iterator)
+
+    assert call_order == ["gpt-4o"]
