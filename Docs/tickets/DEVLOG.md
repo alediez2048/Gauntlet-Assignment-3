@@ -7,6 +7,94 @@
 
 ---
 
+## MVP-010: Metadata-Based Re-ranker ✅
+
+### Plain-English Summary
+- Implemented `rerank_chunks()` in `src/retrieval/reranker.py` with metadata-first reranking on paragraph name, division hints, file-path overlap, dependency overlap, and optional codebase/language hints
+- Added deterministic score normalization and confidence mapping to the required `HIGH` / `MEDIUM` / `LOW` contract
+- Added optional Cohere cross-encoder second stage with explicit fallback to metadata-only ranking on missing key or Cohere failure
+- Added deterministic sorting with stable tie-breakers so rerank output order is reproducible across runs
+- Added 12 focused unit tests in `tests/test_retrieval.py` covering validation, boosts, confidence mapping, deterministic ordering, and Cohere invocation/fallback behavior
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-010
+- **Branch:** `feature/mvp-010-metadata-reranker`
+
+### Scope
+- Implement metadata-based reranking for retrieval candidates
+- Keep module retrieval-only (no search, context assembly, generation, or API route logic)
+- Preserve `list[RetrievedChunk]` input/output contract while updating `score` and `confidence`
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `rerank_chunks` | `(query: str, chunks: list[RetrievedChunk], feature: str = "code_explanation", enable_cohere: bool = True) -> list[RetrievedChunk]` | Deterministically reranked retrieval chunks |
+
+#### Helper Signatures Added
+
+| Helper | Purpose |
+|--------|---------|
+| `_validate_inputs(query: str, chunks: list[RetrievedChunk]) -> None` | Validate deterministic query/chunk preconditions |
+| `_tokenize_query(query: str) -> set[str]` | Build normalized query token set for matching |
+| `_metadata_boost_for_chunk(query_tokens: set[str], chunk: RetrievedChunk, feature: str) -> float` | Compute bounded metadata boost per chunk |
+| `_apply_metadata_rerank(query: str, chunks: list[RetrievedChunk], feature: str) -> list[RetrievedChunk]` | Apply metadata-first score adjustments |
+| `_normalize_scores(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]` | Normalize scores to `[0.0, 1.0]` with equal-score fallback |
+| `_build_cohere_client() -> _CohereClientProtocol` | Build Cohere client lazily from `COHERE_API_KEY` |
+| `_apply_cohere_rerank(query: str, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]` | Run Cohere rerank and blend with metadata score |
+| `_confidence_from_score(score: float) -> Confidence` | Map normalized score to confidence enum |
+| `_assign_confidence(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]` | Attach confidence labels to reranked chunks |
+| `_sort_chunks_deterministically(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]` | Apply stable ordering (`score desc`, then file/line/name tie-breakers) |
+
+#### Metadata Boost and Confidence Assumptions
+- Metadata boost is bounded (`<= +0.30`) to prevent runaway reorder behavior
+- Score normalization uses min-max over current candidates; equal-score sets normalize to `0.50`
+- Confidence thresholds:
+  - `HIGH`: score `>= 0.75`
+  - `MEDIUM`: score `>= 0.45` and `< 0.75`
+  - `LOW`: score `< 0.45`
+
+#### Cohere Fallback Behavior
+- Cohere stage is attempted only when `enable_cohere=True` and `COHERE_API_KEY` is present
+- Missing key or Cohere failure falls back explicitly to metadata-only ranking
+- Cohere errors are surfaced as typed `CohereRerankError` internally and handled via explicit fallback path (with log context)
+
+### Testing
+- Added **12 tests** in `tests/test_retrieval.py`
+- Validated TDD sequence:
+  1. Tests written first in `tests/test_retrieval.py`
+  2. Initial run failed at collection/import (expected with empty `src/retrieval/reranker.py`)
+  3. Implementation added in `src/retrieval/reranker.py`
+  4. Re-run passed (`12 passed`)
+- Regression and lint verification:
+  - `python -m pytest tests/ -v` -> `104 passed`, `2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures)
+  - `ruff check src/retrieval/reranker.py tests/test_retrieval.py` -> passed
+  - `ruff check . --fix` currently reports pre-existing unrelated `E402` import-order issues in `src/ingestion/indexer.py`
+
+### Files Changed
+- **Modified:** `src/retrieval/reranker.py` - MVP-010 metadata-first reranker implementation
+- **Modified:** `tests/test_retrieval.py` - 12 MVP-010 unit tests
+- **Updated:** `Docs/tickets/DEVLOG.md` - this entry
+
+### Acceptance Criteria
+- [x] `src/retrieval/reranker.py` implemented with `rerank_chunks()` and helper logic
+- [x] Metadata-first reranking active with deterministic scoring and ordering
+- [x] Confidence normalization maps to `HIGH/MEDIUM/LOW` consistently
+- [x] Optional Cohere second-stage path implemented with deterministic fallback
+- [x] Unit tests added and passing in `tests/test_retrieval.py`
+- [x] TDD flow followed (failing state observed before implementation)
+- [x] DEVLOG updated with MVP-010 entry
+
+### Notes
+- No network calls are made by unit tests; Cohere behavior is fully mocked.
+- Existing unrelated changes in `src/ingestion/indexer.py` and `tests/test_indexer.py` were left untouched per ticket scope.
+
+---
+
 ## MVP-008: Qdrant Indexer Module ✅
 
 ### Plain-English Summary

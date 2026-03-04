@@ -1,0 +1,52 @@
+---
+description: Git branching and commit workflow for ticket implementation
+alwaysApply: true
+---
+
+# Git Workflow (MANDATORY)
+
+## Branch-Per-Ticket Rule
+
+**NEVER commit directly to `main`.** Every ticket must use a dedicated feature branch.
+
+Before writing ANY code for a ticket:
+
+1. Ensure you are on `main` and up to date:
+   ```
+   git switch main && git pull
+   ```
+2. Create a feature branch named after the ticket:
+   ```
+   git switch -c feature/<ticket-id>-<short-description>
+   ```
+   Examples:
+   - `feature/mvp-008-qdrant-indexer`
+   - `feature/mvp-009-hybrid-search`
+   - `feature/g4-001-fortran-parser`
+
+3. Do ALL work on this branch. Never switch back to `main` to commit.
+
+## Commit Conventions
+
+- Use Conventional Commits: `feat:`, `test:`, `fix:`, `docs:`, `refactor:`
+- Commit in small increments (tests first, then implementation, then docs)
+- Reference the ticket ID in the first commit message:
+  ```
+  test: add unit tests for Qdrant indexer (MVP-008)
+  ```
+
+## When Done With a Ticket
+
+1. Push the feature branch:
+   ```
+   git push -u origin feature/<ticket-id>-<short-description>
+   ```
+2. Open a PR against `main` (or inform the user to review)
+3. Do NOT merge to `main` yourself — wait for review
+
+## What NOT to Do
+
+- Do NOT commit to `main` directly
+- Do NOT skip creating a branch "to save time"
+- Do NOT delete branches after merging (let the reviewer handle cleanup)
+- Do NOT rebase or force-push without explicit user approval

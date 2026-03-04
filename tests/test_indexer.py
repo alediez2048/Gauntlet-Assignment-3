@@ -230,9 +230,15 @@ def test_point_mapping_uses_chunk_id_embedding_and_payload_fields(
     points = fake_client.upsert_calls[0]["points"]
     first_point = points[0]
 
-    assert getattr(first_point, "id") == embedded_chunk.chunk_id
+    # Point ID should be a deterministic UUID derived from chunk_id
+    point_id = getattr(first_point, "id")
+    import uuid
+    uuid.UUID(point_id)  # validates it's a valid UUID
+    assert point_id == str(uuid.uuid5(indexer._LEGACYLENS_UUID_NAMESPACE, embedded_chunk.chunk_id))
+
     assert getattr(first_point, "vector") == embedded_chunk.embedding
     payload = getattr(first_point, "payload")
+    assert payload["chunk_id"] == embedded_chunk.chunk_id  # original string preserved in payload
     assert payload["content"] == embedded_chunk.chunk.content
     assert payload["file_path"] == embedded_chunk.chunk.file_path
     assert payload["line_start"] == embedded_chunk.chunk.line_start

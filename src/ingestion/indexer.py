@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator, Sequence
 from typing import TypeVar
 
@@ -16,6 +17,8 @@ from src.config import (
     QDRANT_URL,
 )
 from src.types.chunks import EmbeddedChunk
+
+_LEGACYLENS_UUID_NAMESPACE = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 REQUIRED_PAYLOAD_INDEX_FIELDS: tuple[str, ...] = (
     "paragraph_name",
@@ -166,14 +169,19 @@ def _build_payload(embedded_chunk: EmbeddedChunk) -> dict[str, str | int | list[
     }
 
 
+def _chunk_id_to_uuid(chunk_id: str) -> str:
+    """Convert a string chunk ID to a deterministic UUID for Qdrant."""
+    return str(uuid.uuid5(_LEGACYLENS_UUID_NAMESPACE, chunk_id))
+
+
 def _build_point(embedded_chunk: EmbeddedChunk) -> PointStruct:
     """Convert an EmbeddedChunk into deterministic Qdrant PointStruct."""
     _validate_embedding(embedded_chunk.embedding)
     payload = _build_payload(embedded_chunk)
     return PointStruct(
-        id=embedded_chunk.chunk_id,
+        id=_chunk_id_to_uuid(embedded_chunk.chunk_id),
         vector=embedded_chunk.embedding,
-        payload=payload,
+        payload={**payload, "chunk_id": embedded_chunk.chunk_id},
     )
 
 
