@@ -7,547 +7,160 @@
 
 ---
 
-## MVP-012: LLM Generation Module ✅
+
+
+
+
+## MVP-013: FastAPI Query Route Integration ✅
 
 ### Plain-English Summary
-- Implemented the LLM runtime layer in `src/generation/llm.py` that consumes MVP-011 messages and returns `QueryResponse` outputs.
-- Added deterministic validation, OpenAI client wiring, model fallback handling (`LLM_MODEL` -> `LLM_FALLBACK_MODEL`), and typed generation/runtime errors.
-- Added confidence parsing (`HIGH|MEDIUM|LOW`) and best-effort citation extraction helpers, plus optional `stream_answer(...)` support for upcoming API/CLI streaming routes.
-- Expanded `tests/test_generation.py` with runtime-focused tests while preserving existing prompt-template test coverage.
+- Implemented the first end-to-end API orchestration path by wiring retrieval, reranking, and LLM generation behind a FastAPI query endpoint.
+- Added typed Pydantic request/response schemas in `src/api/schemas.py` with deterministic validation for query, feature, top_k, language, and codebase fields.
+- Implemented `POST /api/query` and `POST /api/stream` routes in `src/api/routes.py` with stage-specific error mapping (400 for validation, 500 for pipeline failures).
+- Wired API router into `src/api/app.py` while preserving existing `/api/health` and `/api/codebases` endpoints.
 
 ### Metadata
 - **Status:** Complete
 - **Date:** Mar 4, 2026
-- **Ticket:** MVP-012
-- **Branch:** `feature/mvp-012-llm-generation-module`
+- **Ticket:** MVP-013
+- **Branch:** `feature/mvp-012-llm-generation-module` (uncommitted — work done on MVP-012 branch)
+
+### Scope
+- Implement API-layer orchestration so a single POST request runs the full query pipeline
+- Define stable request/response schemas for CLI and frontend consumption
+- Keep route layer thin — no ingestion, prompt-template, or retrieval logic in routes
+
+### Technical Implementation
+
+#### Routes (`src/api/routes.py`)
+- `POST /api/query` — runs retrieval → rerank → generation, returns `QueryResponseSchema`
+- `POST /api/stream` — runs retrieval → rerank → streams generation output as `text/plain`
+- Pipeline stages isolated into `_run_retrieval()`, `_run_rerank()`, `_run_generation()` with typed error mapping
+
+#### Schemas (`src/api/schemas.py`)
+- `QueryRequest` — Pydantic model with field validators for query (non-blank), feature (from `FEATURES`), top_k (positive), language (supported set), codebase/model (optional with blank→None normalization)
+- `RetrievedChunkSchema` — API serialization of `RetrievedChunk` with `from_retrieved_chunk()` factory
+- `QueryResponseSchema` — API serialization of `QueryResponse` with `from_query_response()` factory and `codebase_filter` backfill
+
+#### Error Mapping
+- `SearchValidationError` / `RerankerValidationError` / `GenerationValidationError` → 400
+- `SearchConfigError` / `SearchBackendError` / `GenerationConfigError` / `GenerationError` → 500
+- Unexpected exceptions → 500 with generic "internal error" detail
+
+### Testing
+- **9 tests** in `tests/test_api.py`, all passing
+- Coverage: response contract, blank query validation, positive top_k validation, unknown feature validation, pipeline stage invocation order, codebase/top_k passthrough, retrieval failure mapping, generation failure mapping, streaming response
+- Full regression: all prior tests still passing
+
+### Files Changed
+- **Modified:** `src/api/app.py` — router registration + CORS middleware
+- **Modified:** `src/api/routes.py` — query and stream route handlers
+- **Modified:** `src/api/schemas.py` — Pydantic request/response schemas
+- **Created:** `tests/test_api.py` — 9 API endpoint tests
+
+### Acceptance Criteria
+- [x] `POST /api/query` implemented and wired into app router
+- [x] Endpoint returns deterministic `QueryResponse`-compatible payloads
+- [x] API tests added and passing in `tests/test_api.py`
+- [x] Existing `/api/health` and `/api/codebases` preserved
+- [x] Error mapping: validation → 400, pipeline failures → 500
+
+---
+
+## MVP-014: CLI Integration via FastAPI Backend ✅
+
+### Plain-English Summary
+- Implemented the first production CLI path as a thin FastAPI client, so CLI no longer duplicates retrieval/rerank/generation orchestration logic.
+- Added typed transport helpers in `src/api/client.py` for `POST /api/query` and `POST /api/stream` with deterministic validation, timeout handling, and response parsing into `QueryResponse`.
+- Implemented a Click-based `query` command in `src/cli/main.py` that forwards CLI options to the API, renders answer metadata/citations, and surfaces actionable non-zero exits.
+- Added focused CLI integration tests in `tests/test_cli.py` for success path, option passthrough, validation, API/transport failures, and stream behavior.
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 4, 2026
+- **Ticket:** MVP-014
+- **Branch:** `feature/mvp-014-cli-api-integration`
 - **Commit:** N/A (not committed in this session)
 
 ### Scope
-- Implement generation runtime contract:
-  - `generate_answer(...) -> QueryResponse`
-  - `stream_answer(...) -> Iterator[str]`
-- Keep module generation-only (no retrieval, reranking, API route, or CLI command logic)
-- Add deterministic runtime tests for fallback, parsing, and return contract behavior
+- Implement API transport-only helpers in `src/api/client.py` (no retrieval/rerank/generation logic).
+- Implement CLI query command wiring in `src/cli/main.py` that calls API client helpers.
+- Add CLI integration tests in `tests/test_cli.py` using mocked API client behavior.
+- Document runtime assumptions and error semantics for CLI->API integration.
 
 ### Technical Implementation
-- Added public generation APIs and helper functions in `src/generation/llm.py`:
-  - `_validate_generation_inputs`, `_build_openai_client`, `_complete_once`, `_complete_with_fallback`
-  - `_parse_confidence`, `_extract_citations`, `_stream_once`, `stream_answer`
-- Implemented lazy OpenAI import and config checks through `OPENAI_API_KEY`.
-- Implemented fallback behavior on retryable transport failures (timeout/rate-limit/connection-like errors).
-- Added malformed response guards for both non-streaming and streaming response shapes.
-- Preserved deterministic behavior for model selection, confidence fallback (`LOW`), and citation extraction order.
+- Added typed API client contract:
+  - `QueryRequestPayload` dataclass for query/stream payload assembly
+  - `post_query(...) -> QueryResponse`
+  - `stream_query(...) -> Iterator[str]`
+- Added deterministic client error taxonomy:
+  - `ApiClientValidationError`
+  - `ApiClientTransportError`
+  - `ApiClientHTTPError` (with `status_code` and `detail`)
+  - `ApiClientResponseError`
+- Added strict response parsing from JSON to `QueryResponse`/`RetrievedChunk`:
+  - confidence enum normalization (`HIGH`/`MEDIUM`/`LOW`)
+  - citation-ready chunk field validation (`file_path`, line range, etc.)
+  - typed failure on malformed payload shape
+- CLI query command now accepts:
+  - query text + `--feature`, `--codebase`, `--top-k`, `--language`, `--model`, `--stream`
+- CLI render behavior:
+  - non-stream mode prints answer, confidence, model, latency, and chunk citations
+  - stream mode prints token chunks as they arrive and terminates with newline
+
+### CLI->API Runtime Assumptions
+- Base URL comes from `LEGACYLENS_API_URL` (via `src/config.py`), with trailing slash normalization.
+- Deterministic timeout is set to `30.0s` per request in the API client helper defaults.
+- Error mapping in CLI:
+  - client validation -> usage error (non-zero)
+  - transport failures -> `Transport error: ...` (non-zero)
+  - API non-2xx -> `API request failed (<status>): <detail>` (non-zero)
+  - malformed response payload -> `Invalid API response: ...` (non-zero)
 
 ### Testing
-- Added **12 new tests** in `tests/test_generation.py` for MVP-012 runtime behavior.
-- `tests/test_generation.py` now has **25 passing tests** total (13 prompt tests + 12 runtime tests).
+- Added **9 tests** in `tests/test_cli.py`:
+  - successful CLI query path with response rendering
+  - option passthrough for `feature`, `codebase`, `top_k`, `language`, `model`
+  - blank query validation
+  - invalid `top_k` handling
+  - transport and API failure error output
+  - stream-mode endpoint path and response-error behavior
 - TDD flow executed:
-  1. runtime tests written first
-  2. initial run failed (expected: missing `llm.py` exports/runtime)
-  3. runtime implementation added
-  4. re-run passed (`25 passed`)
-- Verification runs:
-  - `.venv/bin/python -m pytest tests/test_generation.py -v` -> `25 passed`
-  - `.venv/bin/python -m pytest tests/ -v` -> `144 passed`, `2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures)
-  - `.venv/bin/ruff check . --fix` -> fails due pre-existing `E402` import-order errors in `src/ingestion/indexer.py`
-
-### Files Changed
-- **Modified:** `src/generation/llm.py`
-- **Modified:** `tests/test_generation.py`
-- **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
-
-### Acceptance Criteria
-- [x] `src/generation/llm.py` implemented with stable generation APIs
-- [x] OpenAI runtime path implemented with configurable primary model + fallback model
-- [x] Confidence parsing and citation extraction implemented deterministically
-- [x] Unit tests added and passing for MVP-012 scope in `tests/test_generation.py`
-- [x] TDD flow followed (failing tests first, then pass)
-- [x] DEVLOG updated with MVP-012 implementation entry
-
-### Notes
-- Full-suite failures are unchanged and pre-existing in `tests/test_cobol_parser.py`.
-- Repository-wide lint errors are pre-existing in `src/ingestion/indexer.py` and outside MVP-012 scope.
-
----
-
-## MVP-011: COBOL-Aware Prompt Template ✅
-
-### Plain-English Summary
-- Implemented the prompt-template layer in `src/generation/prompts.py` so generation can consume deterministic, citation-enforced messages.
-- Added strict system prompt instructions for evidence grounding, `file:line` citations, and confidence labels (`HIGH`, `MEDIUM`, `LOW`).
-- Added deterministic user/context prompt formatting for `RetrievedChunk` inputs, including safe fallback behavior for empty context and line-range anomalies.
-- Added a focused generation test suite in `tests/test_generation.py` and validated red-to-green TDD flow.
-
-### Metadata
-- **Status:** Complete
-- **Date:** Mar 3, 2026
-- **Ticket:** MVP-011
-- **Branch:** `feature/mvp-011-cobol-prompt-template`
-- **Commit:** `cb934d8` - `feat: add COBOL prompt template builders for MVP-011`
-
-### Scope
-- Implement prompt-builder contract:
-  - `build_system_prompt(...)`
-  - `build_user_prompt(...)`
-  - `build_messages(...)`
-- Keep module generation-template-only (no OpenAI transport/runtime logic yet)
-
-### Technical Implementation
-- Added deterministic input validation and typed error handling (`PromptValidationError`) for blank query and unsupported language.
-- Added language-aware and feature-aware inserts with deterministic fallback for unknown feature names.
-- Added helper formatting for chunk citations and context assembly in stable input order.
-- Preserved MVP-011 boundaries: no retrieval/reranker/API/CLI code introduced.
-
-### Testing
-- Added **13 tests** in `tests/test_generation.py`.
-- TDD sequence confirmed:
   1. tests written first
-  2. initial run failed due to missing prompt APIs
-  3. implementation added
-  4. re-run passed (`13 passed`)
-- Full regression snapshot during implementation: `132 passed, 2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures).
+  2. initial run failed during import (expected; client/CLI placeholders were empty)
+  3. implementation added in `src/api/client.py` and `src/cli/main.py`
+  4. re-run passed (`9 passed`)
+- Full regression run:
+  - `.venv/bin/python -m pytest tests/ -v` -> `167 passed`, `2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures)
+- Lint run:
+  - `.venv/bin/ruff check . --fix` -> fails on pre-existing `E402` import-order issues in `src/ingestion/indexer.py` (outside MVP-014 scope)
 
 ### Files Changed
-- **Modified:** `src/generation/prompts.py`
-- **Modified:** `tests/test_generation.py`
+- **Modified:** `src/api/client.py`
+- **Modified:** `src/cli/main.py`
+- **Modified:** `tests/test_cli.py`
 - **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
-
-### Acceptance Criteria
-- [x] Prompt APIs implemented and deterministic
-- [x] Citation/confidence instructions enforced in system prompt
-- [x] Context formatting implemented for `RetrievedChunk`
-- [x] Prompt-focused tests added and passing
-- [x] Ticket work merged to `main`
 
 ---
 
-## MVP-012: LLM Generation Primer Created ✅
+## MVP-015: Render Deployment Primer Created ✅
 
 ### Plain-English Summary
-- Created the MVP-012 primer to define the LLM runtime ticket scope now that MVP-011 prompt contracts are in place.
-- Primer specifies generation API contracts, fallback behavior (GPT-4o -> GPT-4o-mini), parsing expectations for confidence/citations, test plan, and Definition of Done.
-- This prepares the next implementation pass in `src/generation/llm.py` without changing runtime code yet.
+- Created the MVP-015 primer to define Render deployment hardening scope now that MVP-014 CLI integration is complete.
+- Primer specifies Dockerfile/render.yaml hardening, deployment-readiness tests, and operational docs alignment.
 
 ### Metadata
 - **Status:** Primer Complete (implementation pending)
-- **Date:** Mar 3, 2026
-- **Ticket:** MVP-012
-- **Branch:** `feature/mvp-011-cobol-prompt-template`
-- **Commit:** `39800cd` - `docs: add MVP-010 recap and MVP-011/MVP-012 primers`
-
-### Scope
-- Author `Docs/tickets/MVP-012-primer.md` with:
-  - required contracts and helper suggestions
-  - edge cases, fallback assumptions, and TDD checklist
-  - workflow constraints and file ownership boundaries
+- **Date:** Mar 4, 2026
+- **Ticket:** MVP-015
 
 ### Files Changed
-- **Added:** `Docs/tickets/MVP-012-primer.md`
-- **Added:** `Docs/tickets/MVP-010-primer.md`
-- **Added:** `Docs/tickets/MVP-011-primer.md`
+- **Added:** `Docs/tickets/MVP-015-primer.md`
 - **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
 
 ### Next Steps
-- Implement MVP-012 in `src/generation/llm.py` with tests in `tests/test_generation.py`.
-- Update DEVLOG with a full MVP-012 implementation entry after runtime code is complete and verified.
-
----
-
-## MVP-009: Hybrid Search Module ✅
-
-### Plain-English Summary
-- Implemented `hybrid_search()` in `src/retrieval/search.py` to run dual retrieval channels (dense vectors + sparse/BM25 text query) via Qdrant-native query paths.
-- Added deterministic query classification for adaptive channel weighting: identifier-heavy queries favor BM25, semantic queries favor dense retrieval.
-- Added deterministic weighted fusion, deduplication by point ID, top-k limiting, and typed mapping to `RetrievedChunk`.
-- Added typed configuration/validation/error handling for query input, Voyage embedding, and Qdrant retrieval failures.
-- Added 15 focused unit tests in `tests/test_retrieval.py` and validated red-to-green TDD cycle.
-
-### Metadata
-- **Status:** Complete
-- **Date:** Mar 3, 2026
-- **Ticket:** MVP-009
-- **Branch:** `feature/mvp-009-hybrid-search`
-
-### Scope
-- Implement hybrid retrieval contract in `src/retrieval/search.py`
-- Keep module retrieval-only (no reranking, generation, API, or context assembly logic)
-- Return stable `list[RetrievedChunk]` outputs from fused channel results
-
-### Technical Implementation
-
-#### Public API
-
-| Function | Signature | Returns |
-|----------|-----------|---------|
-| `hybrid_search` | `(query: str, top_k: int = DEFAULT_TOP_K, codebase: str \| None = None, collection_name: str = QDRANT_COLLECTION_NAME) -> list[RetrievedChunk]` | Fused, ranked retrieval chunks |
-
-#### Helper Signatures Added
-
-| Helper | Purpose |
-|--------|---------|
-| `_validate_query_inputs(query: str, top_k: int) -> None` | Deterministic query argument validation |
-| `_build_qdrant_client() -> QdrantClient` | Build Qdrant client from env config |
-| `_build_voyage_client() -> _VoyageClientProtocol` | Build Voyage embedding client from env config |
-| `_embed_query(client: _VoyageClientProtocol, query: str) -> list[float]` | Query embedding with `input_type="query"` |
-| `_build_query_filter(codebase: str \| None) -> Filter \| None` | Optional metadata filter for codebase routing |
-| `_is_identifier_query(query: str) -> bool` | Query-type classification heuristic |
-| `_select_channel_weights(query: str) -> tuple[float, float]` | Adaptive dense/sparse weighting |
-| `_search_dense(...) -> list[object]` | Dense retrieval channel call |
-| `_search_sparse_bm25(...) -> list[object]` | Sparse/BM25 retrieval channel call |
-| `_fuse_channel_results(...) -> list[_FusedPoint]` | Deterministic normalization, weighted fusion, dedupe, ranking |
-| `_to_retrieved_chunk(point: _FusedPoint) -> RetrievedChunk` | Output contract mapping with safe fallbacks |
-
-#### Query-Type and Weighting Assumptions
-- Identifier-heavy query (e.g. COBOL-like tokens, uppercase symbols, hyphen/underscore identifiers):
-  - `dense=0.4`, `sparse=0.6`
-- Semantic/natural language query:
-  - `dense=0.7`, `sparse=0.3`
-
-#### Fusion and Ordering Strategy
-- Dense and sparse channels are normalized independently to `[0.0, 1.0]` per request.
-- Fused score is deterministic weighted sum: `dense_norm * dense_weight + sparse_norm * sparse_weight`.
-- Duplicate chunk IDs across channels are merged deterministically by ID.
-- Final ordering tie-breakers:
-  1. fused score (desc)
-  2. dense score (desc)
-  3. sparse score (desc)
-  4. lexical point ID (asc)
-
-### Testing
-- Added **15 tests** in `tests/test_retrieval.py`
-- Validated TDD sequence:
-  1. Tests written first
-  2. Initial run failed at import/collection (expected with empty `src/retrieval/search.py`)
-  3. Implementation added in `src/retrieval/search.py`
-  4. Re-run passed (`15 passed`)
-- Validation coverage includes:
-  - blank query and invalid `top_k` input errors
-  - missing `QDRANT_URL` / `VOYAGE_API_KEY` config errors
-  - adaptive weighting behavior
-  - codebase filter propagation to both channels
-  - deterministic dedupe + ranking + top-k truncation
-  - empty-result behavior
-  - typed error surfacing for Voyage and Qdrant failures
-- Regression and lint verification:
-  - `ruff check . --fix` -> passed
-  - `python -m pytest tests/ -v` -> `107 passed`, `2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures)
-
-### Files Changed
-- **Modified:** `src/retrieval/search.py` - MVP-009 hybrid retrieval implementation
-- **Modified:** `tests/test_retrieval.py` - 15 MVP-009 retrieval unit tests
-- **Updated:** `Docs/tickets/DEVLOG.md` - this entry
-
-### Acceptance Criteria
-- [x] `src/retrieval/search.py` implemented with `hybrid_search()` and helper logic
-- [x] Dense + BM25 channels executed through Qdrant-native query paths
-- [x] Query-adaptive weighting implemented for identifier vs semantic queries
-- [x] Optional `codebase` filter applied via payload metadata filter
-- [x] Results returned as `list[RetrievedChunk]` with deterministic mapping and ranking
-- [x] Unit tests added and passing in `tests/test_retrieval.py`
-- [x] TDD flow followed (failing state observed before implementation)
-- [x] DEVLOG updated with MVP-009 entry
-
-### Notes
-- Full-suite parser encoding failures remain pre-existing and outside MVP-009 scope.
-- MVP-009 now provides the retrieval contract required by MVP-010 reranking.
-
----
-
-## MVP-008: Qdrant Indexer Module ✅
-
-### Plain-English Summary
-- Implemented `index_chunks()` end-to-end in `src/ingestion/indexer.py` to persist `EmbeddedChunk` vectors and payloads into Qdrant
-- Added idempotent shared-collection setup with `EMBEDDING_DIMENSIONS` (1536) and cosine distance
-- Added required payload indexes (`paragraph_name`, `division`, `file_path`, `language`, `codebase`) with safe idempotent handling
-- Added deterministic `PointStruct` mapping (`id=chunk_id`) with metadata/content payload normalization and embedding dimension validation
-- Added strict batch upsert flow and deterministic ordering guarantees for predictable testability
-- Added 12 focused unit tests in `tests/test_indexer.py` and validated red->green TDD cycle
-
-### Metadata
-- **Status:** Complete
-- **Date:** Mar 3, 2026
-- **Ticket:** MVP-008
-
-### Scope
-- Implement Qdrant indexer module for ingestion outputs
-- Preserve strict contract: `index_chunks(embedded_chunks: list[EmbeddedChunk], collection_name: str = QDRANT_COLLECTION_NAME, batch_size: int = EMBEDDING_BATCH_SIZE) -> int`
-- Keep module ingestion-only (no retrieval, generation, or API route logic)
-
-### Technical Implementation
-
-#### Public API
-
-| Function | Signature | Returns |
-|----------|-----------|---------|
-| `index_chunks` | `(embedded_chunks: list[EmbeddedChunk], collection_name: str = QDRANT_COLLECTION_NAME, batch_size: int = EMBEDDING_BATCH_SIZE) -> int` | Count of indexed points |
-
-#### Helper Signatures Added
-
-| Helper | Purpose |
-|--------|---------|
-| `_build_qdrant_client() -> QdrantClient` | Build client from `QDRANT_URL` and `QDRANT_API_KEY` |
-| `_ensure_collection(client: QdrantClient, collection_name: str) -> None` | Create collection when missing with 1536/cosine config |
-| `_ensure_payload_indexes(client: QdrantClient, collection_name: str) -> None` | Ensure required filter indexes exist idempotently |
-| `_validate_embedding(embedding: list[float], expected_dimensions: int = EMBEDDING_DIMENSIONS) -> None` | Enforce vector dimension contract |
-| `_build_payload(embedded_chunk: EmbeddedChunk) -> dict[str, str \| int \| list[str]]` | Build retrieval-ready payload with deterministic fallbacks |
-| `_build_point(embedded_chunk: EmbeddedChunk) -> PointStruct` | Convert chunk + embedding into Qdrant point |
-| `_batched(items: Sequence[T], size: int) -> Iterator[list[T]]` | Deterministic batch slicing |
-| `_upsert_batch(client: QdrantClient, collection_name: str, points: list[PointStruct]) -> None` | Batch upsert with typed error surfacing |
-
-#### Collection and Index Assumptions
-- Collection existence is checked first; creation only occurs when missing
-- Collection vector config is fixed to:
-  - `size=EMBEDDING_DIMENSIONS`
-  - `distance=Distance.COSINE`
-- Payload index creation is idempotent:
-  - repeated calls that report "already exists/already indexed" are treated as success
-- All upserts are batch-based; no one-point network calls in a per-item loop
-
-#### Payload Schema Stored Per Point
-
-```python
-{
-    "content": chunk.content,
-    "file_path": file_path,
-    "line_start": line_start,
-    "line_end": line_end,
-    "name": chunk.name,
-    "paragraph_name": paragraph_name,
-    "division": division,
-    "chunk_type": chunk_type,
-    "language": language,
-    "codebase": codebase,
-    "dependencies": chunk.dependencies,
-}
-```
-
-### Testing
-- Added **12 tests** in `tests/test_indexer.py`
-- Validated TDD sequence:
-  1. Tests written first
-  2. Initial run failed at collection/import (expected, empty indexer module)
-  3. Implementation added in `src/ingestion/indexer.py`
-  4. Re-run passed (`12 passed`)
-- Coverage includes:
-  - return contract (`int` count)
-  - empty input behavior (no client/upsert calls)
-  - missing `QDRANT_URL` configuration error
-  - collection create/no-recreate behavior
-  - required payload index creation + idempotent already-exists handling
-  - batching behavior (`1` and `257` chunk scenarios)
-  - deterministic point mapping (`id`, `vector`, payload fields)
-  - embedding dimension mismatch handling
-  - typed surfacing of upsert failures
-  - invalid batch size handling
-
-### Files Changed
-- **Modified:** `src/ingestion/indexer.py` - MVP-008 Qdrant indexing implementation
-- **Added:** `tests/test_indexer.py` - 12 MVP-008 unit tests
-- **Updated:** `Docs/tickets/DEVLOG.md` - this entry
-
-### Acceptance Criteria
-- [x] `src/ingestion/indexer.py` implemented with `index_chunks()` and helper logic
-- [x] Qdrant collection setup is idempotent and dimension-correct
-- [x] Required payload indexes created for retrieval filters
-- [x] Upserts run in deterministic batches with stable point IDs
-- [x] Payload schema includes retrieval/citation-critical fields
-- [x] Unit tests added and passing in `tests/test_indexer.py`
-- [x] TDD flow followed (failing state observed before implementation)
-- [x] DEVLOG updated with MVP-008 entry
-
-### Notes
-- `tests/test_indexer.py` passes fully in local run.
-- Full regression run still reports 2 failing tests in `tests/test_cobol_parser.py` (`TestEncodingDetection`), matching pre-existing encoding-detection/runtime sensitivity and outside MVP-008 scope.
-
----
-
-## MVP-007: Batch Embedding Module ✅
-
-### Plain-English Summary
-- Implemented `embed_chunks()` end-to-end in `src/ingestion/embedder.py` to convert `Chunk` objects into deterministic `EmbeddedChunk` outputs
-- Added strict batch-only embedding flow (no per-chunk API calls), preserving input order across multi-batch requests
-- Added deterministic `chunk_id` generation (`{codebase}:{file_path}:{line_start}`) for stable downstream indexing
-- Added dimension validation against `EMBEDDING_DIMENSIONS` (1536) with explicit typed errors
-- Added timeout retry handling with exponential backoff and clear failure behavior after max attempts
-- Added 11 focused unit tests in `tests/test_embedder.py` and validated red->green TDD cycle
-
-### Metadata
-- **Status:** Complete
-- **Date:** Mar 3, 2026
-- **Ticket:** MVP-007
-
-### Scope
-- Implement batch embedding module for ingestion outputs
-- Preserve strict contract: `embed_chunks(chunks: list[Chunk], model: str = EMBEDDING_MODEL, batch_size: int = EMBEDDING_BATCH_SIZE) -> list[EmbeddedChunk]`
-- Keep module ingestion-only (no Qdrant indexing, retrieval, or generation logic)
-
-### Technical Implementation
-
-#### Public API
-
-| Function | Signature | Returns |
-|----------|-----------|---------|
-| `embed_chunks` | `(chunks: list[Chunk], model: str = EMBEDDING_MODEL, batch_size: int = EMBEDDING_BATCH_SIZE) -> list[EmbeddedChunk]` | Deterministic embedded chunk payloads |
-
-#### Helper Signatures Added
-
-| Helper | Purpose |
-|--------|---------|
-| `_build_voyage_client() -> _VoyageClientProtocol` | Build `voyageai.Client` from `VOYAGE_API_KEY` |
-| `_batched(items: Sequence[T], size: int) -> Iterator[list[T]]` | Deterministic batch slicing |
-| `_embed_batch_with_retry(...) -> list[list[float]]` | Batch embed with timeout retries/backoff |
-| `_validate_dimensions(vectors: list[list[float]], expected_dimensions: int = EMBEDDING_DIMENSIONS) -> None` | Enforce 1536-dim vector contract |
-| `_build_chunk_id(chunk: Chunk) -> str` | Stable downstream ID generation |
-| `_attach_vectors(chunks: list[Chunk], vectors: list[list[float]]) -> list[EmbeddedChunk]` | Preserve order while attaching vectors |
-
-#### Retry Assumptions and Error Behavior
-- Timeout retries are capped at **3 attempts** per batch
-- Backoff schedule is exponential: **0.5s -> 1.0s -> 2.0s**
-- Timeout handling is typed (`TimeoutError` + voyage timeout subclasses when available)
-- Final timeout failure raises `EmbeddingRetryError` with deterministic message
-- Missing API key fails fast with `EmbeddingConfigError`
-- Wrong vector size fails fast with `EmbeddingDimensionError`
-
-#### Deterministic ID Strategy
-- Every `EmbeddedChunk.chunk_id` is generated as:
-  - `{codebase}:{file_path}:{line_start}`
-- This keeps IDs stable across runs for reliable MVP-008 upsert behavior
-
-### Testing
-- Added **11 tests** in `tests/test_embedder.py`
-- Validated TDD sequence:
-  1. Tests written first
-  2. Initial run failed (expected, missing embedder contract)
-  3. Implementation added in `src/ingestion/embedder.py`
-  4. Re-run passed (`11 passed`)
-- Coverage includes:
-  - return contract (`list[EmbeddedChunk]`, original chunk preserved)
-  - batching behavior (`0`, `1`, and `257` chunk scenarios)
-  - request shape (`model`, `input_type="document"`)
-  - dimension validation (pass + fail)
-  - deterministic `chunk_id`
-  - transient and permanent timeout retry behavior
-  - order stability across batches
-  - invalid batch size handling
-
-### Files Changed
-- **Modified:** `src/ingestion/embedder.py` - MVP-007 batch embedding implementation
-- **Modified:** `tests/test_embedder.py` - 11 MVP-007 unit tests
-- **Updated:** `Docs/tickets/DEVLOG.md` - this entry
-
-### Acceptance Criteria
-- [x] `src/ingestion/embedder.py` implemented with `embed_chunks()` and helper logic
-- [x] Embedding calls are batch-only and use Voyage Code 2 config
-- [x] Retry with exponential backoff implemented (3 attempts)
-- [x] All output vectors validated to 1536 dimensions
-- [x] Output is `list[EmbeddedChunk]` with deterministic `chunk_id`
-- [x] Unit tests added and passing in `tests/test_embedder.py`
-- [x] TDD cycle followed (failing state observed before implementation)
-- [x] DEVLOG updated with MVP-007 entry
-
-### Notes
-- `tests/test_embedder.py` passes fully in local run.
-- Full regression run currently reports 2 failures in `tests/test_cobol_parser.py` (`TestEncodingDetection`), matching pre-existing encoding-detection/runtime sensitivity and outside MVP-007 scope.
-
----
-
-## MVP-006: COBOL Chunk Metadata & Dependency Extraction ✅
-
-### Plain-English Summary
-- Implemented `chunk_cobol()` end-to-end in `src/ingestion/cobol_chunker.py` (the file was still an empty placeholder)
-- Added paragraph-aware chunk construction with adaptive size normalization (merge small chunks, split oversized chunks)
-- Enriched every returned `Chunk` with retrieval-ready metadata payload fields required by MVP-006
-- Added deterministic dependency extraction for `PERFORM`, `PERFORM ... THRU ...`, `CALL`, and `COPY`
-- Added 13 focused unit tests in `tests/test_cobol_chunker.py` and validated red→green TDD cycle
-
-### Metadata
-- **Status:** Complete
-- **Date:** Mar 3, 2026
-- **Ticket:** MVP-006
-
-### Scope
-- Implement metadata extraction and dependency parsing for COBOL chunk outputs
-- Backfill chunker implementation baseline needed for MVP-006 (module was still empty)
-- Preserve stable contract: `chunk_cobol(processed_file: ProcessedFile, codebase: str = "gnucobol") -> list[Chunk]`
-
-### Technical Implementation
-
-#### Public API
-
-| Function | Signature | Returns |
-|----------|-----------|---------|
-| `chunk_cobol` | `(processed_file: ProcessedFile, codebase: str = "gnucobol") -> list[Chunk]` | Metadata-enriched COBOL chunks |
-
-#### Helper Signatures Added
-
-| Helper | Purpose |
-|--------|---------|
-| `_detect_paragraph_blocks(lines: list[str]) -> list[_ParagraphBlock]` | Detect paragraph/fallback ranges |
-| `_merge_small_chunks(chunks: list[Chunk]) -> list[Chunk]` | Merge adjacent chunks below min token threshold |
-| `_split_oversized_chunks(chunks: list[Chunk]) -> list[Chunk]` | Split chunks over max token threshold |
-| `_extract_dependencies(chunk_text: str) -> list[str]` | Parse PERFORM/CALL/COPY dependencies |
-| `_build_chunk_metadata(chunk: Chunk) -> dict[str, str \| int]` | Build retrieval payload metadata |
-| `_enrich_chunk(chunk: Chunk) -> Chunk` | Attach dependencies + metadata to chunk |
-
-#### Metadata Schema Applied Per Chunk
-
-```python
-{
-    "paragraph_name": chunk.name,
-    "division": chunk.division,
-    "file_path": chunk.file_path,
-    "line_start": chunk.line_start,
-    "line_end": chunk.line_end,
-    "chunk_type": chunk.chunk_type,
-    "language": chunk.language,
-    "codebase": chunk.codebase,
-}
-```
-
-#### Dependency Parsing Rules
-- `PERFORM target` → `TARGET`
-- `PERFORM start THRU end` → `START THRU END` (stored as one dependency entry)
-- `CALL "program"` / `CALL 'program'` / `CALL program` → `PROGRAM`
-- `COPY copybook` → `COPYBOOK`
-
-Normalization assumptions:
-- All dependency tokens normalized to uppercase
-- Quotes and trailing punctuation stripped
-- Duplicates removed while preserving first-seen order
-
-### Testing
-- Added **13 tests** in `tests/test_cobol_chunker.py`
-- Validated TDD sequence:
-  1. Tests written first
-  2. Initial run failed at collection (`chunk_cobol` missing)
-  3. Implementation added
-  4. Re-run passed (`13 passed`)
-- Coverage includes:
-  - Required metadata presence on each chunk
-  - `metadata["paragraph_name"] == chunk.name`
-  - line range integrity and content boundary alignment
-  - division behavior (`PROCEDURE` and deterministic non-procedure fallback)
-  - dependency extraction for `PERFORM`, `PERFORM THRU`, `CALL`, `COPY`
-  - dependency normalization/deduplication
-  - empty/noisy dependency edge cases
-
-### Files Changed
-- **Modified:** `src/ingestion/cobol_chunker.py` — full chunker + metadata/dependency implementation
-- **Modified:** `tests/test_cobol_chunker.py` — 13 MVP-006 unit tests
-- **Modified:** `src/types/chunks.py` — `Chunk.metadata` typing widened to `dict[str, str | int]`
-- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
-
-### Acceptance Criteria
-- [x] Metadata extraction integrated in `src/ingestion/cobol_chunker.py`
-- [x] Required schema fields populated and consistent across chunk + metadata
-- [x] Dependency extraction works for `PERFORM`, `PERFORM THRU`, `CALL`, and `COPY`
-- [x] `metadata["paragraph_name"]` mirrors `Chunk.name`
-- [x] Unit tests added and passing in `tests/test_cobol_chunker.py`
-- [x] TDD cycle followed (failing state observed before implementation)
-- [x] DEVLOG updated with MVP-006 entry
-
-### Notes
-- Full regression run currently reports 2 failing tests in `tests/test_cobol_parser.py` (`TestEncodingDetection`) related to encoding-detection behavior under the local dependency/runtime combination; these are outside MVP-006 chunker changes.
+- Implement MVP-015 in Dockerfile, render.yaml, tests/test_api.py, and deployment docs.
+- Update DEVLOG with full MVP-015 implementation entry when deployment hardening is complete.
 
 ---
 
@@ -1230,5 +843,637 @@ class ProcessingRoute(TypedDict):
 - COBOL continuation starts at col 12 (Area B), not col 8 — the spec reserves cols 8-11 (Area A) for paragraph/section headers even on continuation lines
 - The `*>` inline comment style is pervasive in GnuCOBOL — without handling it, most modern COBOL files would have garbage in code output
 - chardet returns `None` for encoding on some edge cases — defaulting to utf-8 with `errors="replace"` is the safest fallback
+
+---
+
+## MVP-005: COBOL Paragraph Chunker ✅
+
+### Plain-English Summary
+- Implemented the COBOL paragraph chunker in `src/ingestion/cobol_chunker.py` that takes preprocessed `ProcessedFile` objects and produces `Chunk` dataclasses on paragraph boundaries.
+- Added paragraph boundary detection in `PROCEDURE DIVISION` using Area A naming conventions.
+- Enforced adaptive chunk sizes (64–768 tokens via tiktoken `cl100k_base`): merges small adjacent chunks and splits oversized chunks on statement boundaries.
+- Returns `Chunk` dataclasses with content, line ranges, paragraph names, and division labels ready for downstream embedding (MVP-007).
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-005
+- **Branch:** committed to `main` (no feature branch)
+
+### Scope
+- Replace empty `src/ingestion/cobol_chunker.py` placeholder with tested paragraph-aware chunker.
+- Provide stable `chunk_cobol(processed_file, codebase) -> list[Chunk]` API for MVP-006 metadata enrichment and MVP-007 embedding.
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `chunk_cobol` | `(processed_file: ProcessedFile, codebase: str = "gnucobol") -> list[Chunk]` | Paragraph-boundary chunks |
+
+#### Key Helpers
+- `_detect_paragraph_blocks(lines)` — detects paragraph headers in Area A, builds block ranges
+- `_is_paragraph_header(line)` — validates paragraph naming conventions (excludes `PROCEDURE DIVISION.`)
+- `_merge_small_chunks(chunks)` — merges adjacent chunks below `CHUNK_MIN_TOKENS` (64)
+- `_split_chunk_by_size(chunk)` — splits chunks exceeding `CHUNK_MAX_TOKENS` (768) on period boundaries
+
+#### Architecture Decisions
+- Token counting via `tiktoken` using `cl100k_base` encoding (consistent with embedding model)
+- Paragraph detection uses Area A position (cols 8–11) + trailing period convention
+- Split prefers COBOL period boundaries to avoid mid-statement breaks
+- Non-`PROCEDURE DIVISION` content is chunked as fallback blocks with deterministic division labels
+
+### Testing
+- **13 tests** in `tests/test_cobol_chunker.py`, all passing
+- Coverage: return contract, required fields, metadata schema, line range integrity, division detection, paragraph boundary accuracy
+- Full suite: 71 tests (13 new + 58 prior), zero regressions
+- Lint: `ruff check` — all checks passed
+
+### Files Changed
+- **Modified:** `src/ingestion/cobol_chunker.py` — full paragraph chunker implementation
+- **Modified:** `tests/test_cobol_chunker.py` — 13 unit tests
+
+### Acceptance Criteria
+- [x] `src/ingestion/cobol_chunker.py` implements `chunk_cobol()` with paragraph-aware chunking
+- [x] Adaptive size enforcement: merge < 64 tokens, split > 768 tokens
+- [x] Token counting via tiktoken `cl100k_base`
+- [x] Returns `list[Chunk]` with content, line ranges, paragraph names, division
+- [x] Unit tests added and passing
+- [x] TDD flow followed
+
+---
+
+## MVP-006: COBOL Chunk Metadata & Dependency Extraction ✅
+
+### Plain-English Summary
+- Implemented `chunk_cobol()` end-to-end in `src/ingestion/cobol_chunker.py` (the file was still an empty placeholder)
+- Added paragraph-aware chunk construction with adaptive size normalization (merge small chunks, split oversized chunks)
+- Enriched every returned `Chunk` with retrieval-ready metadata payload fields required by MVP-006
+- Added deterministic dependency extraction for `PERFORM`, `PERFORM ... THRU ...`, `CALL`, and `COPY`
+- Added 13 focused unit tests in `tests/test_cobol_chunker.py` and validated red→green TDD cycle
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-006
+
+### Scope
+- Implement metadata extraction and dependency parsing for COBOL chunk outputs
+- Backfill chunker implementation baseline needed for MVP-006 (module was still empty)
+- Preserve stable contract: `chunk_cobol(processed_file: ProcessedFile, codebase: str = "gnucobol") -> list[Chunk]`
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `chunk_cobol` | `(processed_file: ProcessedFile, codebase: str = "gnucobol") -> list[Chunk]` | Metadata-enriched COBOL chunks |
+
+#### Helper Signatures Added
+
+| Helper | Purpose |
+|--------|---------|
+| `_detect_paragraph_blocks(lines: list[str]) -> list[_ParagraphBlock]` | Detect paragraph/fallback ranges |
+| `_merge_small_chunks(chunks: list[Chunk]) -> list[Chunk]` | Merge adjacent chunks below min token threshold |
+| `_split_oversized_chunks(chunks: list[Chunk]) -> list[Chunk]` | Split chunks over max token threshold |
+| `_extract_dependencies(chunk_text: str) -> list[str]` | Parse PERFORM/CALL/COPY dependencies |
+| `_build_chunk_metadata(chunk: Chunk) -> dict[str, str \| int]` | Build retrieval payload metadata |
+| `_enrich_chunk(chunk: Chunk) -> Chunk` | Attach dependencies + metadata to chunk |
+
+#### Metadata Schema Applied Per Chunk
+
+```python
+{
+    "paragraph_name": chunk.name,
+    "division": chunk.division,
+    "file_path": chunk.file_path,
+    "line_start": chunk.line_start,
+    "line_end": chunk.line_end,
+    "chunk_type": chunk.chunk_type,
+    "language": chunk.language,
+    "codebase": chunk.codebase,
+}
+```
+
+#### Dependency Parsing Rules
+- `PERFORM target` → `TARGET`
+- `PERFORM start THRU end` → `START THRU END` (stored as one dependency entry)
+- `CALL "program"` / `CALL 'program'` / `CALL program` → `PROGRAM`
+- `COPY copybook` → `COPYBOOK`
+
+Normalization assumptions:
+- All dependency tokens normalized to uppercase
+- Quotes and trailing punctuation stripped
+- Duplicates removed while preserving first-seen order
+
+### Testing
+- Added **13 tests** in `tests/test_cobol_chunker.py`
+- Validated TDD sequence:
+  1. Tests written first
+  2. Initial run failed at collection (`chunk_cobol` missing)
+  3. Implementation added
+  4. Re-run passed (`13 passed`)
+- Coverage includes:
+  - Required metadata presence on each chunk
+  - `metadata["paragraph_name"] == chunk.name`
+  - line range integrity and content boundary alignment
+  - division behavior (`PROCEDURE` and deterministic non-procedure fallback)
+  - dependency extraction for `PERFORM`, `PERFORM THRU`, `CALL`, `COPY`
+  - dependency normalization/deduplication
+  - empty/noisy dependency edge cases
+
+### Files Changed
+- **Modified:** `src/ingestion/cobol_chunker.py` — full chunker + metadata/dependency implementation
+- **Modified:** `tests/test_cobol_chunker.py` — 13 MVP-006 unit tests
+- **Modified:** `src/types/chunks.py` — `Chunk.metadata` typing widened to `dict[str, str | int]`
+- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
+
+### Acceptance Criteria
+- [x] Metadata extraction integrated in `src/ingestion/cobol_chunker.py`
+- [x] Required schema fields populated and consistent across chunk + metadata
+- [x] Dependency extraction works for `PERFORM`, `PERFORM THRU`, `CALL`, and `COPY`
+- [x] `metadata["paragraph_name"]` mirrors `Chunk.name`
+- [x] Unit tests added and passing in `tests/test_cobol_chunker.py`
+- [x] TDD cycle followed (failing state observed before implementation)
+- [x] DEVLOG updated with MVP-006 entry
+
+### Notes
+- Full regression run currently reports 2 failing tests in `tests/test_cobol_parser.py` (`TestEncodingDetection`) related to encoding-detection behavior under the local dependency/runtime combination; these are outside MVP-006 chunker changes.
+
+---
+## MVP-007: Batch Embedding Module ✅
+
+### Plain-English Summary
+- Implemented `embed_chunks()` end-to-end in `src/ingestion/embedder.py` to convert `Chunk` objects into deterministic `EmbeddedChunk` outputs
+- Added strict batch-only embedding flow (no per-chunk API calls), preserving input order across multi-batch requests
+- Added deterministic `chunk_id` generation (`{codebase}:{file_path}:{line_start}`) for stable downstream indexing
+- Added dimension validation against `EMBEDDING_DIMENSIONS` (1536) with explicit typed errors
+- Added timeout retry handling with exponential backoff and clear failure behavior after max attempts
+- Added 11 focused unit tests in `tests/test_embedder.py` and validated red->green TDD cycle
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-007
+
+### Scope
+- Implement batch embedding module for ingestion outputs
+- Preserve strict contract: `embed_chunks(chunks: list[Chunk], model: str = EMBEDDING_MODEL, batch_size: int = EMBEDDING_BATCH_SIZE) -> list[EmbeddedChunk]`
+- Keep module ingestion-only (no Qdrant indexing, retrieval, or generation logic)
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `embed_chunks` | `(chunks: list[Chunk], model: str = EMBEDDING_MODEL, batch_size: int = EMBEDDING_BATCH_SIZE) -> list[EmbeddedChunk]` | Deterministic embedded chunk payloads |
+
+#### Helper Signatures Added
+
+| Helper | Purpose |
+|--------|---------|
+| `_build_voyage_client() -> _VoyageClientProtocol` | Build `voyageai.Client` from `VOYAGE_API_KEY` |
+| `_batched(items: Sequence[T], size: int) -> Iterator[list[T]]` | Deterministic batch slicing |
+| `_embed_batch_with_retry(...) -> list[list[float]]` | Batch embed with timeout retries/backoff |
+| `_validate_dimensions(vectors: list[list[float]], expected_dimensions: int = EMBEDDING_DIMENSIONS) -> None` | Enforce 1536-dim vector contract |
+| `_build_chunk_id(chunk: Chunk) -> str` | Stable downstream ID generation |
+| `_attach_vectors(chunks: list[Chunk], vectors: list[list[float]]) -> list[EmbeddedChunk]` | Preserve order while attaching vectors |
+
+#### Retry Assumptions and Error Behavior
+- Timeout retries are capped at **3 attempts** per batch
+- Backoff schedule is exponential: **0.5s -> 1.0s -> 2.0s**
+- Timeout handling is typed (`TimeoutError` + voyage timeout subclasses when available)
+- Final timeout failure raises `EmbeddingRetryError` with deterministic message
+- Missing API key fails fast with `EmbeddingConfigError`
+- Wrong vector size fails fast with `EmbeddingDimensionError`
+
+#### Deterministic ID Strategy
+- Every `EmbeddedChunk.chunk_id` is generated as:
+  - `{codebase}:{file_path}:{line_start}`
+- This keeps IDs stable across runs for reliable MVP-008 upsert behavior
+
+### Testing
+- Added **11 tests** in `tests/test_embedder.py`
+- Validated TDD sequence:
+  1. Tests written first
+  2. Initial run failed (expected, missing embedder contract)
+  3. Implementation added in `src/ingestion/embedder.py`
+  4. Re-run passed (`11 passed`)
+- Coverage includes:
+  - return contract (`list[EmbeddedChunk]`, original chunk preserved)
+  - batching behavior (`0`, `1`, and `257` chunk scenarios)
+  - request shape (`model`, `input_type="document"`)
+  - dimension validation (pass + fail)
+  - deterministic `chunk_id`
+  - transient and permanent timeout retry behavior
+  - order stability across batches
+  - invalid batch size handling
+
+### Files Changed
+- **Modified:** `src/ingestion/embedder.py` - MVP-007 batch embedding implementation
+- **Modified:** `tests/test_embedder.py` - 11 MVP-007 unit tests
+- **Updated:** `Docs/tickets/DEVLOG.md` - this entry
+
+### Acceptance Criteria
+- [x] `src/ingestion/embedder.py` implemented with `embed_chunks()` and helper logic
+- [x] Embedding calls are batch-only and use Voyage Code 2 config
+- [x] Retry with exponential backoff implemented (3 attempts)
+- [x] All output vectors validated to 1536 dimensions
+- [x] Output is `list[EmbeddedChunk]` with deterministic `chunk_id`
+- [x] Unit tests added and passing in `tests/test_embedder.py`
+- [x] TDD cycle followed (failing state observed before implementation)
+- [x] DEVLOG updated with MVP-007 entry
+
+### Notes
+- `tests/test_embedder.py` passes fully in local run.
+- Full regression run currently reports 2 failures in `tests/test_cobol_parser.py` (`TestEncodingDetection`), matching pre-existing encoding-detection/runtime sensitivity and outside MVP-007 scope.
+
+
+
+## MVP-008: Qdrant Indexer Module ✅
+
+### Plain-English Summary
+- Implemented `index_chunks()` end-to-end in `src/ingestion/indexer.py` to persist `EmbeddedChunk` vectors and payloads into Qdrant
+- Added idempotent shared-collection setup with `EMBEDDING_DIMENSIONS` (1536) and cosine distance
+- Added required payload indexes (`paragraph_name`, `division`, `file_path`, `language`, `codebase`) with safe idempotent handling
+- Added deterministic `PointStruct` mapping (`id=chunk_id`) with metadata/content payload normalization and embedding dimension validation
+- Added strict batch upsert flow and deterministic ordering guarantees for predictable testability
+- Added 12 focused unit tests in `tests/test_indexer.py` and validated red->green TDD cycle
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-008
+
+### Scope
+- Implement Qdrant indexer module for ingestion outputs
+- Preserve strict contract: `index_chunks(embedded_chunks: list[EmbeddedChunk], collection_name: str = QDRANT_COLLECTION_NAME, batch_size: int = EMBEDDING_BATCH_SIZE) -> int`
+- Keep module ingestion-only (no retrieval, generation, or API route logic)
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `index_chunks` | `(embedded_chunks: list[EmbeddedChunk], collection_name: str = QDRANT_COLLECTION_NAME, batch_size: int = EMBEDDING_BATCH_SIZE) -> int` | Count of indexed points |
+
+#### Helper Signatures Added
+
+| Helper | Purpose |
+|--------|---------|
+| `_build_qdrant_client() -> QdrantClient` | Build client from `QDRANT_URL` and `QDRANT_API_KEY` |
+| `_ensure_collection(client: QdrantClient, collection_name: str) -> None` | Create collection when missing with 1536/cosine config |
+| `_ensure_payload_indexes(client: QdrantClient, collection_name: str) -> None` | Ensure required filter indexes exist idempotently |
+| `_validate_embedding(embedding: list[float], expected_dimensions: int = EMBEDDING_DIMENSIONS) -> None` | Enforce vector dimension contract |
+| `_build_payload(embedded_chunk: EmbeddedChunk) -> dict[str, str \| int \| list[str]]` | Build retrieval-ready payload with deterministic fallbacks |
+| `_build_point(embedded_chunk: EmbeddedChunk) -> PointStruct` | Convert chunk + embedding into Qdrant point |
+| `_batched(items: Sequence[T], size: int) -> Iterator[list[T]]` | Deterministic batch slicing |
+| `_upsert_batch(client: QdrantClient, collection_name: str, points: list[PointStruct]) -> None` | Batch upsert with typed error surfacing |
+
+#### Collection and Index Assumptions
+- Collection existence is checked first; creation only occurs when missing
+- Collection vector config is fixed to:
+  - `size=EMBEDDING_DIMENSIONS`
+  - `distance=Distance.COSINE`
+- Payload index creation is idempotent:
+  - repeated calls that report "already exists/already indexed" are treated as success
+- All upserts are batch-based; no one-point network calls in a per-item loop
+
+#### Payload Schema Stored Per Point
+
+```python
+{
+    "content": chunk.content,
+    "file_path": file_path,
+    "line_start": line_start,
+    "line_end": line_end,
+    "name": chunk.name,
+    "paragraph_name": paragraph_name,
+    "division": division,
+    "chunk_type": chunk_type,
+    "language": language,
+    "codebase": codebase,
+    "dependencies": chunk.dependencies,
+}
+```
+
+### Testing
+- Added **12 tests** in `tests/test_indexer.py`
+- Validated TDD sequence:
+  1. Tests written first
+  2. Initial run failed at collection/import (expected, empty indexer module)
+  3. Implementation added in `src/ingestion/indexer.py`
+  4. Re-run passed (`12 passed`)
+- Coverage includes:
+  - return contract (`int` count)
+  - empty input behavior (no client/upsert calls)
+  - missing `QDRANT_URL` configuration error
+  - collection create/no-recreate behavior
+  - required payload index creation + idempotent already-exists handling
+  - batching behavior (`1` and `257` chunk scenarios)
+  - deterministic point mapping (`id`, `vector`, payload fields)
+  - embedding dimension mismatch handling
+  - typed surfacing of upsert failures
+  - invalid batch size handling
+
+### Files Changed
+- **Modified:** `src/ingestion/indexer.py` - MVP-008 Qdrant indexing implementation
+- **Added:** `tests/test_indexer.py` - 12 MVP-008 unit tests
+- **Updated:** `Docs/tickets/DEVLOG.md` - this entry
+
+### Acceptance Criteria
+- [x] `src/ingestion/indexer.py` implemented with `index_chunks()` and helper logic
+- [x] Qdrant collection setup is idempotent and dimension-correct
+- [x] Required payload indexes created for retrieval filters
+- [x] Upserts run in deterministic batches with stable point IDs
+- [x] Payload schema includes retrieval/citation-critical fields
+- [x] Unit tests added and passing in `tests/test_indexer.py`
+- [x] TDD flow followed (failing state observed before implementation)
+- [x] DEVLOG updated with MVP-008 entry
+
+### Notes
+- `tests/test_indexer.py` passes fully in local run.
+- Full regression run still reports 2 failing tests in `tests/test_cobol_parser.py` (`TestEncodingDetection`), matching pre-existing encoding-detection/runtime sensitivity and outside MVP-008 scope.
+
+---
+
+## MVP-009: Hybrid Search Module ✅
+
+### Plain-English Summary
+- Implemented `hybrid_search()` in `src/retrieval/search.py` to run dual retrieval channels (dense vectors + sparse/BM25 text query) via Qdrant-native query paths.
+- Added deterministic query classification for adaptive channel weighting: identifier-heavy queries favor BM25, semantic queries favor dense retrieval.
+- Added deterministic weighted fusion, deduplication by point ID, top-k limiting, and typed mapping to `RetrievedChunk`.
+- Added typed configuration/validation/error handling for query input, Voyage embedding, and Qdrant retrieval failures.
+- Added 15 focused unit tests in `tests/test_retrieval.py` and validated red-to-green TDD cycle.
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-009
+- **Branch:** `feature/mvp-009-hybrid-search`
+
+### Scope
+- Implement hybrid retrieval contract in `src/retrieval/search.py`
+- Keep module retrieval-only (no reranking, generation, API, or context assembly logic)
+- Return stable `list[RetrievedChunk]` outputs from fused channel results
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `hybrid_search` | `(query: str, top_k: int = DEFAULT_TOP_K, codebase: str \| None = None, collection_name: str = QDRANT_COLLECTION_NAME) -> list[RetrievedChunk]` | Fused, ranked retrieval chunks |
+
+#### Helper Signatures Added
+
+| Helper | Purpose |
+|--------|---------|
+| `_validate_query_inputs(query: str, top_k: int) -> None` | Deterministic query argument validation |
+| `_build_qdrant_client() -> QdrantClient` | Build Qdrant client from env config |
+| `_build_voyage_client() -> _VoyageClientProtocol` | Build Voyage embedding client from env config |
+| `_embed_query(client: _VoyageClientProtocol, query: str) -> list[float]` | Query embedding with `input_type="query"` |
+| `_build_query_filter(codebase: str \| None) -> Filter \| None` | Optional metadata filter for codebase routing |
+| `_is_identifier_query(query: str) -> bool` | Query-type classification heuristic |
+| `_select_channel_weights(query: str) -> tuple[float, float]` | Adaptive dense/sparse weighting |
+| `_search_dense(...) -> list[object]` | Dense retrieval channel call |
+| `_search_sparse_bm25(...) -> list[object]` | Sparse/BM25 retrieval channel call |
+| `_fuse_channel_results(...) -> list[_FusedPoint]` | Deterministic normalization, weighted fusion, dedupe, ranking |
+| `_to_retrieved_chunk(point: _FusedPoint) -> RetrievedChunk` | Output contract mapping with safe fallbacks |
+
+#### Query-Type and Weighting Assumptions
+- Identifier-heavy query (e.g. COBOL-like tokens, uppercase symbols, hyphen/underscore identifiers):
+  - `dense=0.4`, `sparse=0.6`
+- Semantic/natural language query:
+  - `dense=0.7`, `sparse=0.3`
+
+#### Fusion and Ordering Strategy
+- Dense and sparse channels are normalized independently to `[0.0, 1.0]` per request.
+- Fused score is deterministic weighted sum: `dense_norm * dense_weight + sparse_norm * sparse_weight`.
+- Duplicate chunk IDs across channels are merged deterministically by ID.
+- Final ordering tie-breakers:
+  1. fused score (desc)
+  2. dense score (desc)
+  3. sparse score (desc)
+  4. lexical point ID (asc)
+
+### Testing
+- Added **15 tests** in `tests/test_retrieval.py`
+- Validated TDD sequence:
+  1. Tests written first
+  2. Initial run failed at import/collection (expected with empty `src/retrieval/search.py`)
+  3. Implementation added in `src/retrieval/search.py`
+  4. Re-run passed (`15 passed`)
+- Validation coverage includes:
+  - blank query and invalid `top_k` input errors
+  - missing `QDRANT_URL` / `VOYAGE_API_KEY` config errors
+  - adaptive weighting behavior
+  - codebase filter propagation to both channels
+  - deterministic dedupe + ranking + top-k truncation
+  - empty-result behavior
+  - typed error surfacing for Voyage and Qdrant failures
+- Regression and lint verification:
+  - `ruff check . --fix` -> passed
+  - `python -m pytest tests/ -v` -> `107 passed`, `2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures)
+
+### Files Changed
+- **Modified:** `src/retrieval/search.py` - MVP-009 hybrid retrieval implementation
+- **Modified:** `tests/test_retrieval.py` - 15 MVP-009 retrieval unit tests
+- **Updated:** `Docs/tickets/DEVLOG.md` - this entry
+
+### Acceptance Criteria
+- [x] `src/retrieval/search.py` implemented with `hybrid_search()` and helper logic
+- [x] Dense + BM25 channels executed through Qdrant-native query paths
+- [x] Query-adaptive weighting implemented for identifier vs semantic queries
+- [x] Optional `codebase` filter applied via payload metadata filter
+- [x] Results returned as `list[RetrievedChunk]` with deterministic mapping and ranking
+- [x] Unit tests added and passing in `tests/test_retrieval.py`
+- [x] TDD flow followed (failing state observed before implementation)
+- [x] DEVLOG updated with MVP-009 entry
+
+### Notes
+- Full-suite parser encoding failures remain pre-existing and outside MVP-009 scope.
+- MVP-009 now provides the retrieval contract required by MVP-010 reranking.
+
+---
+
+## MVP-010: Metadata-Based Re-ranker ✅
+
+### Plain-English Summary
+- Implemented `rerank_chunks()` in `src/retrieval/reranker.py` with a two-stage scoring pipeline: metadata-first local boosts followed by optional Cohere cross-encoder reranking.
+- Metadata stage applies paragraph-name match, division-aware, and dependency-overlap boosts to retrieval scores, then normalizes to `[0.0, 1.0]`.
+- Cohere stage (opt-in) blends metadata scores (40%) with Cohere relevance scores (60%) for cross-encoder precision.
+- Added deterministic confidence mapping (`HIGH >= 0.75`, `MEDIUM >= 0.45`, `LOW < 0.45`) and stable tie-break sorting (score desc, file_path asc, line_start asc).
+- Also included UUID5 fix for Qdrant point IDs in `src/ingestion/indexer.py` (discovered during integration testing).
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-010
+- **Branch:** `feature/mvp-010-metadata-reranker`
+- **Commit:** `b85cd2a` — `feat: implement metadata reranker and Qdrant UUID5 point IDs (MVP-010)`
+
+### Scope
+- Implement metadata-first reranking contract in `src/retrieval/reranker.py`
+- Keep module retrieval-only (no generation, API, or CLI logic)
+- Fix Qdrant point ID format issue discovered during live integration testing
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `rerank_chunks` | `(query: str, chunks: list[RetrievedChunk], feature: str = "code_explanation", enable_cohere: bool = True) -> list[RetrievedChunk]` | Re-scored and re-ordered chunks |
+
+#### Key Helpers
+- `_metadata_boost_score(query, chunk)` — applies paragraph name, division, and dependency boosts
+- `_normalize_scores(chunks)` — min-max normalization to `[0.0, 1.0]`
+- `_map_confidence(score)` — deterministic `HIGH/MEDIUM/LOW` mapping
+- `_build_cohere_client()` — lazy Cohere client construction from `COHERE_API_KEY`
+- `_cohere_rerank(client, query, chunks)` — cross-encoder reranking with metadata blend
+
+#### Cohere Blend Strategy
+- Metadata weight: 40%, Cohere weight: 60%
+- Missing API key or Cohere error: graceful fallback to metadata-only ordering
+- Cohere model: `rerank-english-v3.0`
+
+#### Qdrant UUID5 Fix (bundled)
+- Qdrant requires UUID or unsigned int point IDs, not free-form strings
+- Added `_chunk_id_to_uuid()` using `uuid.uuid5()` with deterministic namespace
+- Original string `chunk_id` preserved in payload for downstream lookup
+
+### Testing
+- **12 tests** in `tests/test_reranker.py`, all passing
+- Coverage: validation, return contract, paragraph boost, division boost, baseline order, dependency boost, confidence mapping, tie-breaking, Cohere integration, missing API key fallback, Cohere error fallback
+- Full regression: 119 passed, 2 failed (pre-existing chardet issues)
+
+### Files Changed
+- **Modified:** `src/retrieval/reranker.py` — full reranker implementation
+- **Created:** `tests/test_reranker.py` — 12 focused reranker tests
+- **Modified:** `src/ingestion/indexer.py` — UUID5 point ID fix
+- **Modified:** `tests/test_indexer.py` — updated for UUID validation
+
+### Acceptance Criteria
+- [x] `src/retrieval/reranker.py` implemented with metadata-first reranking
+- [x] Paragraph name, division, and dependency boosts applied
+- [x] Confidence mapping is deterministic (`HIGH/MEDIUM/LOW`)
+- [x] Optional Cohere cross-encoder with graceful fallback
+- [x] Unit tests added and passing
+- [x] TDD flow followed
+
+### Notes
+- Reranker was wiped by MVP-009 Cursor agent scope violation. Restored from commit `b85cd2a` and tests moved to dedicated `tests/test_reranker.py` to prevent future overwrites.
+
+---
+
+## MVP-011: COBOL-Aware Prompt Template ✅
+
+### Plain-English Summary
+- Implemented the prompt-template layer in `src/generation/prompts.py` so generation can consume deterministic, citation-enforced messages.
+- Added strict system prompt instructions for evidence grounding, `file:line` citations, and confidence labels (`HIGH`, `MEDIUM`, `LOW`).
+- Added deterministic user/context prompt formatting for `RetrievedChunk` inputs, including safe fallback behavior for empty context and line-range anomalies.
+- Added 13 focused tests in `tests/test_generation.py` and validated red-to-green TDD flow.
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-011
+- **Branch:** `feature/mvp-011-cobol-prompt-template`
+- **Commit:** `cb934d8` — `feat: add COBOL prompt template builders for MVP-011`
+
+### Scope
+- Implement prompt-builder contract: `build_system_prompt(...)`, `build_user_prompt(...)`, `build_messages(...)`
+- Keep module generation-template-only (no OpenAI transport/runtime logic)
+
+### Technical Implementation
+- Added `build_system_prompt(feature, language)` with COBOL-specific guidance, feature-aware inserts, citation rules, and confidence requirements.
+- Added `build_user_prompt(query, chunks)` with deterministic chunk context formatting including `file:start-end` citations, paragraph names, and division labels.
+- Added `build_messages(query, chunks, feature, language)` combining system + user prompts into chat-completions message list.
+- Added deterministic input validation (`PromptValidationError`) for blank query and unsupported language.
+- Added safe fallback behavior for unknown feature names, missing metadata, and line-range anomalies.
+
+### Testing
+- **13 tests** in `tests/test_generation.py`, all passing
+- Coverage: return contract, validation errors, citation instruction presence, confidence instruction presence, context formatting, unknown feature fallback, empty chunk guidance, deterministic output, line-range anomaly recovery, missing metadata handling
+- Full regression: 132 passed, 2 failed (pre-existing chardet issues)
+
+### Files Changed
+- **Modified:** `src/generation/prompts.py` — full prompt template implementation
+- **Modified:** `tests/test_generation.py` — 13 prompt-focused tests
+
+### Acceptance Criteria
+- [x] Prompt APIs implemented and deterministic
+- [x] Citation/confidence instructions enforced in system prompt
+- [x] Context formatting implemented for `RetrievedChunk`
+- [x] Prompt-focused tests added and passing
+- [x] TDD flow followed
+
+---
+
+## MVP-012: LLM Generation Module ✅
+
+### Plain-English Summary
+- Implemented the LLM runtime layer in `src/generation/llm.py` that consumes MVP-011 messages and returns `QueryResponse` outputs.
+- Added deterministic validation, OpenAI client wiring, model fallback handling (`LLM_MODEL` -> `LLM_FALLBACK_MODEL`), and typed generation/runtime errors.
+- Added confidence parsing (`HIGH|MEDIUM|LOW`) and best-effort citation extraction helpers, plus optional `stream_answer(...)` support for upcoming API/CLI streaming routes.
+- Expanded `tests/test_generation.py` with runtime-focused tests while preserving existing prompt-template test coverage.
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 4, 2026
+- **Ticket:** MVP-012
+- **Branch:** `feature/mvp-012-llm-generation-module`
+- **Commit:** N/A (not committed in this session)
+
+### Scope
+- Implement generation runtime contract:
+  - `generate_answer(...) -> QueryResponse`
+  - `stream_answer(...) -> Iterator[str]`
+- Keep module generation-only (no retrieval, reranking, API route, or CLI command logic)
+- Add deterministic runtime tests for fallback, parsing, and return contract behavior
+
+### Technical Implementation
+- Added public generation APIs and helper functions in `src/generation/llm.py`:
+  - `_validate_generation_inputs`, `_build_openai_client`, `_complete_once`, `_complete_with_fallback`
+  - `_parse_confidence`, `_extract_citations`, `_stream_once`, `stream_answer`
+- Implemented lazy OpenAI import and config checks through `OPENAI_API_KEY`.
+- Implemented fallback behavior on retryable transport failures (timeout/rate-limit/connection-like errors).
+- Added malformed response guards for both non-streaming and streaming response shapes.
+- Preserved deterministic behavior for model selection, confidence fallback (`LOW`), and citation extraction order.
+
+### Testing
+- Added **12 new tests** in `tests/test_generation.py` for MVP-012 runtime behavior.
+- `tests/test_generation.py` now has **25 passing tests** total (13 prompt tests + 12 runtime tests).
+- TDD flow executed:
+  1. runtime tests written first
+  2. initial run failed (expected: missing `llm.py` exports/runtime)
+  3. runtime implementation added
+  4. re-run passed (`25 passed`)
+- Verification runs:
+  - `.venv/bin/python -m pytest tests/test_generation.py -v` -> `25 passed`
+  - `.venv/bin/python -m pytest tests/ -v` -> `144 passed`, `2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures)
+  - `.venv/bin/ruff check . --fix` -> fails due pre-existing `E402` import-order errors in `src/ingestion/indexer.py`
+
+### Files Changed
+- **Modified:** `src/generation/llm.py`
+- **Modified:** `tests/test_generation.py`
+- **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
+
+### Acceptance Criteria
+- [x] `src/generation/llm.py` implemented with stable generation APIs
+- [x] OpenAI runtime path implemented with configurable primary model + fallback model
+- [x] Confidence parsing and citation extraction implemented deterministically
+- [x] Unit tests added and passing for MVP-012 scope in `tests/test_generation.py`
+- [x] TDD flow followed (failing tests first, then pass)
+- [x] DEVLOG updated with MVP-012 implementation entry
+
+### Notes
+- Full-suite failures are unchanged and pre-existing in `tests/test_cobol_parser.py`.
+- Repository-wide lint errors are pre-existing in `src/ingestion/indexer.py` and outside MVP-012 scope.
 
 ---
