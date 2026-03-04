@@ -7,6 +7,106 @@
 
 ---
 
+## MVP-006: COBOL Chunk Metadata & Dependency Extraction ✅
+
+### Plain-English Summary
+- Implemented `chunk_cobol()` end-to-end in `src/ingestion/cobol_chunker.py` (the file was still an empty placeholder)
+- Added paragraph-aware chunk construction with adaptive size normalization (merge small chunks, split oversized chunks)
+- Enriched every returned `Chunk` with retrieval-ready metadata payload fields required by MVP-006
+- Added deterministic dependency extraction for `PERFORM`, `PERFORM ... THRU ...`, `CALL`, and `COPY`
+- Added 13 focused unit tests in `tests/test_cobol_chunker.py` and validated red→green TDD cycle
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-006
+
+### Scope
+- Implement metadata extraction and dependency parsing for COBOL chunk outputs
+- Backfill chunker implementation baseline needed for MVP-006 (module was still empty)
+- Preserve stable contract: `chunk_cobol(processed_file: ProcessedFile, codebase: str = "gnucobol") -> list[Chunk]`
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `chunk_cobol` | `(processed_file: ProcessedFile, codebase: str = "gnucobol") -> list[Chunk]` | Metadata-enriched COBOL chunks |
+
+#### Helper Signatures Added
+
+| Helper | Purpose |
+|--------|---------|
+| `_detect_paragraph_blocks(lines: list[str]) -> list[_ParagraphBlock]` | Detect paragraph/fallback ranges |
+| `_merge_small_chunks(chunks: list[Chunk]) -> list[Chunk]` | Merge adjacent chunks below min token threshold |
+| `_split_oversized_chunks(chunks: list[Chunk]) -> list[Chunk]` | Split chunks over max token threshold |
+| `_extract_dependencies(chunk_text: str) -> list[str]` | Parse PERFORM/CALL/COPY dependencies |
+| `_build_chunk_metadata(chunk: Chunk) -> dict[str, str \| int]` | Build retrieval payload metadata |
+| `_enrich_chunk(chunk: Chunk) -> Chunk` | Attach dependencies + metadata to chunk |
+
+#### Metadata Schema Applied Per Chunk
+
+```python
+{
+    "paragraph_name": chunk.name,
+    "division": chunk.division,
+    "file_path": chunk.file_path,
+    "line_start": chunk.line_start,
+    "line_end": chunk.line_end,
+    "chunk_type": chunk.chunk_type,
+    "language": chunk.language,
+    "codebase": chunk.codebase,
+}
+```
+
+#### Dependency Parsing Rules
+- `PERFORM target` → `TARGET`
+- `PERFORM start THRU end` → `START THRU END` (stored as one dependency entry)
+- `CALL "program"` / `CALL 'program'` / `CALL program` → `PROGRAM`
+- `COPY copybook` → `COPYBOOK`
+
+Normalization assumptions:
+- All dependency tokens normalized to uppercase
+- Quotes and trailing punctuation stripped
+- Duplicates removed while preserving first-seen order
+
+### Testing
+- Added **13 tests** in `tests/test_cobol_chunker.py`
+- Validated TDD sequence:
+  1. Tests written first
+  2. Initial run failed at collection (`chunk_cobol` missing)
+  3. Implementation added
+  4. Re-run passed (`13 passed`)
+- Coverage includes:
+  - Required metadata presence on each chunk
+  - `metadata["paragraph_name"] == chunk.name`
+  - line range integrity and content boundary alignment
+  - division behavior (`PROCEDURE` and deterministic non-procedure fallback)
+  - dependency extraction for `PERFORM`, `PERFORM THRU`, `CALL`, `COPY`
+  - dependency normalization/deduplication
+  - empty/noisy dependency edge cases
+
+### Files Changed
+- **Modified:** `src/ingestion/cobol_chunker.py` — full chunker + metadata/dependency implementation
+- **Modified:** `tests/test_cobol_chunker.py` — 13 MVP-006 unit tests
+- **Modified:** `src/types/chunks.py` — `Chunk.metadata` typing widened to `dict[str, str | int]`
+- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
+
+### Acceptance Criteria
+- [x] Metadata extraction integrated in `src/ingestion/cobol_chunker.py`
+- [x] Required schema fields populated and consistent across chunk + metadata
+- [x] Dependency extraction works for `PERFORM`, `PERFORM THRU`, `CALL`, and `COPY`
+- [x] `metadata["paragraph_name"]` mirrors `Chunk.name`
+- [x] Unit tests added and passing in `tests/test_cobol_chunker.py`
+- [x] TDD cycle followed (failing state observed before implementation)
+- [x] DEVLOG updated with MVP-006 entry
+
+### Notes
+- Full regression run currently reports 2 failing tests in `tests/test_cobol_parser.py` (`TestEncodingDetection`) related to encoding-detection behavior under the local dependency/runtime combination; these are outside MVP-006 chunker changes.
+
+---
+
 ## Timeline
 
 | Phase     | Days                  | Target                                                                      |

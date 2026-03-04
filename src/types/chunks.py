@@ -14,7 +14,7 @@ class ProcessedFile:
     language: str
     file_path: str
     encoding: str = "utf-8"
-    metadata: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, str | int] = field(default_factory=dict)
 
 
 @dataclass
