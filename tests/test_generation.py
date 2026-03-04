@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import pytest
 
+from src.generation import llm
+from src.generation.llm import (
+    GenerationError,
+    GenerationResponseError,
+    GenerationValidationError,
+    generate_answer,
+)
 from src.generation.prompts import (
     PromptValidationError,
     build_messages,
     build_system_prompt,
     build_user_prompt,
 )
-from src.types.responses import Confidence, RetrievedChunk
+from src.types.responses import Confidence, QueryResponse, RetrievedChunk
 
 
 @pytest.fixture
@@ -184,3 +191,272 @@ def test_context_format_handles_missing_metadata_fields_without_crashing() -> No
 
     assert "Source: data/raw/gnucobol/fallback.cob:1-1" in user_prompt
     assert "Name: (unknown)" in user_prompt
+
+
+def test_generate_answer_returns_query_response_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    sample_retrieved_chunks: list[RetrievedChunk],
+) -> None:
+    def _fake_build_messages(
+        query: str,
+        chunks: list[RetrievedChunk],
+        feature: str,
+        language: str,
+    ) -> list[dict[str, str]]:
+        assert query == "Explain MAIN-LOGIC."
+        assert chunks == sample_retrieved_chunks
+        assert feature == "code_explanation"
+        assert language == "cobol"
+        return [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "user"},
+        ]
+
+    def _fake_complete_with_fallback(
+        *, messages: list[dict[str, str]], model: str
+    ) -> tuple[str, str]:
+        assert messages == [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "user"},
+        ]
+        assert model == "gpt-4o"
+        return (
+            "MAIN-LOGIC initializes values.\n"
+            "Citations: data/raw/gnucobol/sample.cob:10-11\n"
+            "Confidence: HIGH",
+            "gpt-4o",
+        )
+
+    clock = iter([1000.0, 1015.0])
+    monkeypatch.setattr(llm, "build_messages", _fake_build_messages)
+    monkeypatch.setattr(llm, "_complete_with_fallback", _fake_complete_with_fallback)
+    monkeypatch.setattr(llm, "_now_ms", lambda: next(clock))
+
+    response = generate_answer(
+        query="Explain MAIN-LOGIC.",
+        chunks=sample_retrieved_chunks,
+    )
+
+    assert isinstance(response, QueryResponse)
+    assert response.query == "Explain MAIN-LOGIC."
+    assert response.feature == "code_explanation"
+    assert response.chunks == sample_retrieved_chunks
+    assert response.model == "gpt-4o"
+    assert response.confidence == Confidence.HIGH
+    assert response.latency_ms == pytest.approx(15.0)
+    assert "MAIN-LOGIC initializes values." in response.answer
+
+
+def test_generate_answer_blank_query_raises_generation_validation_error() -> None:
+    with pytest.raises(GenerationValidationError, match="query must not be blank"):
+        generate_answer(query="   ", chunks=[])
+
+
+def test_generate_answer_none_chunks_raises_generation_validation_error() -> None:
+    with pytest.raises(GenerationValidationError, match="chunks must not be None"):
+        generate_answer(query="Explain this", chunks=None)  # type: ignore[arg-type]
+
+
+def test_generate_answer_calls_build_messages_exactly_once(
+    monkeypatch: pytest.MonkeyPatch,
+    sample_retrieved_chunks: list[RetrievedChunk],
+) -> None:
+    calls: list[tuple[str, list[RetrievedChunk], str, str]] = []
+
+    def _fake_build_messages(
+        query: str,
+        chunks: list[RetrievedChunk],
+        feature: str,
+        language: str,
+    ) -> list[dict[str, str]]:
+        calls.append((query, chunks, feature, language))
+        return [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "user"},
+        ]
+
+    monkeypatch.setattr(llm, "build_messages", _fake_build_messages)
+    monkeypatch.setattr(
+        llm,
+        "_complete_with_fallback",
+        lambda *, messages, model: ("Answer.\nConfidence: MEDIUM", model),
+    )
+    clock = iter([10.0, 15.0])
+    monkeypatch.setattr(llm, "_now_ms", lambda: next(clock))
+
+    _ = generate_answer(
+        query="Explain MAIN-LOGIC.",
+        chunks=sample_retrieved_chunks,
+        feature="code_explanation",
+        language="cobol",
+    )
+
+    assert len(calls) == 1
+    assert calls[0] == (
+        "Explain MAIN-LOGIC.",
+        sample_retrieved_chunks,
+        "code_explanation",
+        "cobol",
+    )
+
+
+def test_complete_with_fallback_primary_model_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call_order: list[str] = []
+
+    def _fake_complete_once(
+        *, client: object, messages: list[dict[str, str]], model: str
+    ) -> str:
+        del client, messages
+        call_order.append(model)
+        return "Primary answer.\nConfidence: HIGH"
+
+    monkeypatch.setattr(llm, "_build_openai_client", lambda: object())
+    monkeypatch.setattr(llm, "_complete_once", _fake_complete_once)
+
+    content, used_model = llm._complete_with_fallback(
+        messages=[{"role": "user", "content": "hi"}],
+        model="gpt-4o",
+    )
+
+    assert used_model == "gpt-4o"
+    assert content.startswith("Primary answer.")
+    assert call_order == ["gpt-4o"]
+
+
+def test_complete_with_fallback_uses_fallback_on_retryable_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call_order: list[str] = []
+
+    def _fake_complete_once(
+        *, client: object, messages: list[dict[str, str]], model: str
+    ) -> str:
+        del client, messages
+        call_order.append(model)
+        if model == "gpt-4o":
+            raise TimeoutError("timed out")
+        return "Fallback answer.\nConfidence: MEDIUM"
+
+    monkeypatch.setattr(llm, "_build_openai_client", lambda: object())
+    monkeypatch.setattr(llm, "_complete_once", _fake_complete_once)
+    monkeypatch.setattr(llm, "LLM_FALLBACK_MODEL", "gpt-4o-mini")
+
+    content, used_model = llm._complete_with_fallback(
+        messages=[{"role": "user", "content": "hi"}],
+        model="gpt-4o",
+    )
+
+    assert used_model == "gpt-4o-mini"
+    assert content.startswith("Fallback answer.")
+    assert call_order == ["gpt-4o", "gpt-4o-mini"]
+
+
+def test_complete_with_fallback_raises_generation_error_when_both_models_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _fake_complete_once(
+        *, client: object, messages: list[dict[str, str]], model: str
+    ) -> str:
+        del client, messages, model
+        raise TimeoutError("rate limit")
+
+    monkeypatch.setattr(llm, "_build_openai_client", lambda: object())
+    monkeypatch.setattr(llm, "_complete_once", _fake_complete_once)
+    monkeypatch.setattr(llm, "LLM_FALLBACK_MODEL", "gpt-4o-mini")
+
+    with pytest.raises(GenerationError, match="primary model"):
+        llm._complete_with_fallback(
+            messages=[{"role": "user", "content": "hi"}],
+            model="gpt-4o",
+        )
+
+
+def test_parse_confidence_maps_high_medium_low_labels() -> None:
+    assert llm._parse_confidence("Confidence: HIGH") == Confidence.HIGH
+    assert llm._parse_confidence("confidence: medium") == Confidence.MEDIUM
+    assert llm._parse_confidence("Confidence: LOW") == Confidence.LOW
+
+
+def test_parse_confidence_defaults_to_low_when_missing_or_invalid_label() -> None:
+    assert llm._parse_confidence("No confidence label here.") == Confidence.LOW
+    assert llm._parse_confidence("Confidence: CERTAIN") == Confidence.LOW
+
+
+def test_extract_citations_returns_unique_ordered_matches() -> None:
+    text = (
+        "See data/raw/gnucobol/sample.cob:10 and "
+        "data/raw/gnucobol/sample.cob:10 again. "
+        "Then data/raw/gnucobol/other.cob:20-25."
+    )
+    assert llm._extract_citations(text) == [
+        "data/raw/gnucobol/sample.cob:10",
+        "data/raw/gnucobol/other.cob:20-25",
+    ]
+
+
+def test_generate_answer_is_deterministic_for_identical_mocked_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    sample_retrieved_chunks: list[RetrievedChunk],
+) -> None:
+    monkeypatch.setattr(
+        llm,
+        "build_messages",
+        lambda query, chunks, feature, language: [
+            {"role": "system", "content": f"{feature}:{language}"},
+            {"role": "user", "content": f"{query}:{len(chunks)}"},
+        ],
+    )
+    monkeypatch.setattr(
+        llm,
+        "_complete_with_fallback",
+        lambda *, messages, model: (
+            "Deterministic answer.\nConfidence: HIGH\n"
+            "Citations: data/raw/gnucobol/sample.cob:10-11",
+            model,
+        ),
+    )
+    clock = iter([100.0, 150.0, 200.0, 250.0])
+    monkeypatch.setattr(llm, "_now_ms", lambda: next(clock))
+
+    first = generate_answer(
+        query="Explain MAIN-LOGIC.",
+        chunks=sample_retrieved_chunks,
+        feature="code_explanation",
+        language="cobol",
+    )
+    second = generate_answer(
+        query="Explain MAIN-LOGIC.",
+        chunks=sample_retrieved_chunks,
+        feature="code_explanation",
+        language="cobol",
+    )
+
+    assert first == second
+
+
+def test_complete_once_raises_typed_error_on_malformed_response() -> None:
+    class _FakeCompletions:
+        def create(
+            self,
+            *,
+            model: str,
+            messages: list[dict[str, str]],
+            temperature: float,
+        ) -> dict[str, list[dict[str, str]]]:
+            del model, messages, temperature
+            return {"choices": []}
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeClient:
+        chat = _FakeChat()
+
+    with pytest.raises(GenerationResponseError, match="Malformed completion response"):
+        llm._complete_once(
+            client=_FakeClient(),
+            messages=[{"role": "user", "content": "hello"}],
+            model="gpt-4o",
+        )

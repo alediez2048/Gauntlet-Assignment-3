@@ -7,6 +7,152 @@
 
 ---
 
+## MVP-012: LLM Generation Module ✅
+
+### Plain-English Summary
+- Implemented the LLM runtime layer in `src/generation/llm.py` that consumes MVP-011 messages and returns `QueryResponse` outputs.
+- Added deterministic validation, OpenAI client wiring, model fallback handling (`LLM_MODEL` -> `LLM_FALLBACK_MODEL`), and typed generation/runtime errors.
+- Added confidence parsing (`HIGH|MEDIUM|LOW`) and best-effort citation extraction helpers, plus optional `stream_answer(...)` support for upcoming API/CLI streaming routes.
+- Expanded `tests/test_generation.py` with runtime-focused tests while preserving existing prompt-template test coverage.
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 4, 2026
+- **Ticket:** MVP-012
+- **Branch:** `feature/mvp-012-llm-generation-module`
+- **Commit:** N/A (not committed in this session)
+
+### Scope
+- Implement generation runtime contract:
+  - `generate_answer(...) -> QueryResponse`
+  - `stream_answer(...) -> Iterator[str]`
+- Keep module generation-only (no retrieval, reranking, API route, or CLI command logic)
+- Add deterministic runtime tests for fallback, parsing, and return contract behavior
+
+### Technical Implementation
+- Added public generation APIs and helper functions in `src/generation/llm.py`:
+  - `_validate_generation_inputs`, `_build_openai_client`, `_complete_once`, `_complete_with_fallback`
+  - `_parse_confidence`, `_extract_citations`, `_stream_once`, `stream_answer`
+- Implemented lazy OpenAI import and config checks through `OPENAI_API_KEY`.
+- Implemented fallback behavior on retryable transport failures (timeout/rate-limit/connection-like errors).
+- Added malformed response guards for both non-streaming and streaming response shapes.
+- Preserved deterministic behavior for model selection, confidence fallback (`LOW`), and citation extraction order.
+
+### Testing
+- Added **12 new tests** in `tests/test_generation.py` for MVP-012 runtime behavior.
+- `tests/test_generation.py` now has **25 passing tests** total (13 prompt tests + 12 runtime tests).
+- TDD flow executed:
+  1. runtime tests written first
+  2. initial run failed (expected: missing `llm.py` exports/runtime)
+  3. runtime implementation added
+  4. re-run passed (`25 passed`)
+- Verification runs:
+  - `.venv/bin/python -m pytest tests/test_generation.py -v` -> `25 passed`
+  - `.venv/bin/python -m pytest tests/ -v` -> `144 passed`, `2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures)
+  - `.venv/bin/ruff check . --fix` -> fails due pre-existing `E402` import-order errors in `src/ingestion/indexer.py`
+
+### Files Changed
+- **Modified:** `src/generation/llm.py`
+- **Modified:** `tests/test_generation.py`
+- **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
+
+### Acceptance Criteria
+- [x] `src/generation/llm.py` implemented with stable generation APIs
+- [x] OpenAI runtime path implemented with configurable primary model + fallback model
+- [x] Confidence parsing and citation extraction implemented deterministically
+- [x] Unit tests added and passing for MVP-012 scope in `tests/test_generation.py`
+- [x] TDD flow followed (failing tests first, then pass)
+- [x] DEVLOG updated with MVP-012 implementation entry
+
+### Notes
+- Full-suite failures are unchanged and pre-existing in `tests/test_cobol_parser.py`.
+- Repository-wide lint errors are pre-existing in `src/ingestion/indexer.py` and outside MVP-012 scope.
+
+---
+
+## MVP-011: COBOL-Aware Prompt Template ✅
+
+### Plain-English Summary
+- Implemented the prompt-template layer in `src/generation/prompts.py` so generation can consume deterministic, citation-enforced messages.
+- Added strict system prompt instructions for evidence grounding, `file:line` citations, and confidence labels (`HIGH`, `MEDIUM`, `LOW`).
+- Added deterministic user/context prompt formatting for `RetrievedChunk` inputs, including safe fallback behavior for empty context and line-range anomalies.
+- Added a focused generation test suite in `tests/test_generation.py` and validated red-to-green TDD flow.
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-011
+- **Branch:** `feature/mvp-011-cobol-prompt-template`
+- **Commit:** `cb934d8` - `feat: add COBOL prompt template builders for MVP-011`
+
+### Scope
+- Implement prompt-builder contract:
+  - `build_system_prompt(...)`
+  - `build_user_prompt(...)`
+  - `build_messages(...)`
+- Keep module generation-template-only (no OpenAI transport/runtime logic yet)
+
+### Technical Implementation
+- Added deterministic input validation and typed error handling (`PromptValidationError`) for blank query and unsupported language.
+- Added language-aware and feature-aware inserts with deterministic fallback for unknown feature names.
+- Added helper formatting for chunk citations and context assembly in stable input order.
+- Preserved MVP-011 boundaries: no retrieval/reranker/API/CLI code introduced.
+
+### Testing
+- Added **13 tests** in `tests/test_generation.py`.
+- TDD sequence confirmed:
+  1. tests written first
+  2. initial run failed due to missing prompt APIs
+  3. implementation added
+  4. re-run passed (`13 passed`)
+- Full regression snapshot during implementation: `132 passed, 2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures).
+
+### Files Changed
+- **Modified:** `src/generation/prompts.py`
+- **Modified:** `tests/test_generation.py`
+- **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
+
+### Acceptance Criteria
+- [x] Prompt APIs implemented and deterministic
+- [x] Citation/confidence instructions enforced in system prompt
+- [x] Context formatting implemented for `RetrievedChunk`
+- [x] Prompt-focused tests added and passing
+- [x] Ticket work merged to `main`
+
+---
+
+## MVP-012: LLM Generation Primer Created ✅
+
+### Plain-English Summary
+- Created the MVP-012 primer to define the LLM runtime ticket scope now that MVP-011 prompt contracts are in place.
+- Primer specifies generation API contracts, fallback behavior (GPT-4o -> GPT-4o-mini), parsing expectations for confidence/citations, test plan, and Definition of Done.
+- This prepares the next implementation pass in `src/generation/llm.py` without changing runtime code yet.
+
+### Metadata
+- **Status:** Primer Complete (implementation pending)
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-012
+- **Branch:** `feature/mvp-011-cobol-prompt-template`
+- **Commit:** `39800cd` - `docs: add MVP-010 recap and MVP-011/MVP-012 primers`
+
+### Scope
+- Author `Docs/tickets/MVP-012-primer.md` with:
+  - required contracts and helper suggestions
+  - edge cases, fallback assumptions, and TDD checklist
+  - workflow constraints and file ownership boundaries
+
+### Files Changed
+- **Added:** `Docs/tickets/MVP-012-primer.md`
+- **Added:** `Docs/tickets/MVP-010-primer.md`
+- **Added:** `Docs/tickets/MVP-011-primer.md`
+- **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
+
+### Next Steps
+- Implement MVP-012 in `src/generation/llm.py` with tests in `tests/test_generation.py`.
+- Update DEVLOG with a full MVP-012 implementation entry after runtime code is complete and verified.
+
+---
+
 ## MVP-009: Hybrid Search Module ✅
 
 ### Plain-English Summary
