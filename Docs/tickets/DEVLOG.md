@@ -46,55 +46,132 @@ The following tickets are **required** to pass the MVP hard gate — a deployed 
 
 ---
 
-## G4 Final Scope (G4-001 → G4-022)
+## G4 Final Scope (Revised)
 
-| Ticket | Title                           | Role                                              |
-| ------ | ------------------------------- | ------------------------------------------------- |
-| G4-001 | Fortran preprocessor            | Multi-language — fixed/free form detection         |
-| G4-002 | Fortran subroutine chunker      | Multi-language — SUBROUTINE/FUNCTION boundaries    |
-| G4-003 | Ingest GNU Fortran              | Multi-codebase — download + preprocess + embed     |
-| G4-004 | Ingest LAPACK                   | Multi-codebase — largest Fortran codebase          |
-| G4-005 | Ingest BLAS                     | Multi-codebase — smallest, validation target       |
-| G4-006 | Ingest OpenCOBOL Contrib        | Multi-codebase — second COBOL codebase             |
-| G4-007 | Multi-codebase query support    | Retrieval — codebase filter, default "all"         |
-| G4-008 | Ground truth evaluation dataset | Eval — 15 manual + 35 LLM-generated, 50+ pairs    |
-| G4-009 | Evaluation script               | Eval — precision@5, per-codebase, per-feature      |
-| G4-010 | Feature: Code Explanation       | Feature 1/8 — explain code in plain English        |
-| G4-011 | Feature: Dependency Mapping     | Feature 2/8 — PERFORM/CALL chain tracing           |
-| G4-012 | Feature: Pattern Detection      | Feature 3/8 — embedding similarity + LLM grouping  |
-| G4-013 | Feature: Impact Analysis        | Feature 4/8 — reverse dependency + LLM assessment  |
-| G4-014 | Feature: Documentation Gen      | Feature 5/8 — auto-generate documentation          |
-| G4-015 | Feature: Translation Hints      | Feature 6/8 — Python equivalents + caveat          |
-| G4-016 | Feature: Bug Pattern Search     | Feature 7/8 — 14-pattern checklist + severity      |
-| G4-017 | Feature: Business Logic Extract | Feature 8/8 — rule extraction from PROCEDURE DIV   |
-| G4-018 | Feature router + unified API    | Feature routing — /api/query accepts feature param  |
-| G4-019 | Cohere re-ranking integration   | Precision — cross-encoder on top of metadata layer  |
-| G4-020 | Architecture document           | Deliverable — system design, diagrams, metrics      |
-| G4-021 | Cost analysis document          | Deliverable — real spend + 4-tier projections       |
-| G4-022 | Full evaluation run             | Gate — run eval, fix regressions, document results  |
+### Pre-G4 Assessment (Mar 4, 2026)
+
+Before starting G4, a full audit was conducted against the MVP codebase. Several G4 tickets were found to be **already completed** or **partially completed** by MVP work that exceeded original scope:
+
+**Already done (close without new work):**
+
+| Ticket | Title | Why It's Done |
+| ------ | ----- | ------------- |
+| G4-019 | Cohere re-ranking integration | `reranker.py` already has full Cohere cross-encoder with metadata blend (40/60) and graceful fallback. Implemented in MVP-010. |
+
+**Partially done (reduced scope):**
+
+| Ticket | Title | What Remains |
+| ------ | ----- | ------------ |
+| G4-010–017 | All 8 features | Features already work end-to-end via prompt differentiation in `prompts.py`. The `feature` param flows through `QueryRequest` → `rerank_chunks()` → `generate_answer()`. Remaining work: decide if Pattern Detection, Impact Analysis, and Dependency Mapping need custom retrieval strategies beyond prompt-only, or document current approach as the architecture. |
+| G4-018 | Feature router + unified API | `/api/query` already accepts `feature` and passes it through. `features/router.py` is empty but routing happens implicitly. Remaining work: either implement the router module with per-feature retrieval strategies, or mark as done-by-design and document. |
+
+**Identified gap (not in any ticket):**
+
+| Gap | Module | Impact |
+| --- | ------ | ------ |
+| Context assembly | `src/retrieval/context.py` | Empty. Pipeline passes all reranked chunks directly to generation without dynamic token budgets or top-1 hierarchical expansion. Affects answer quality for long/complex queries. Should be addressed during G4-007 or as a standalone task. |
+
+### G4 Execution Order (Revised)
+
+Tickets reordered by dependency chain. Original numbering preserved for traceability.
+
+**Phase 1 — Fortran Pipeline (no dependencies)**
+
+| Ticket | Title | Role | Status |
+| ------ | ----- | ---- | ------ |
+| G4-001 | Fortran preprocessor | Fixed/free form detection, comment extraction, continuation handling | TODO |
+| G4-002 | Fortran subroutine chunker | SUBROUTINE/FUNCTION boundary chunking, adaptive 64-768 tokens | TODO |
+
+**Phase 2 — Data Acquisition + Ingestion (depends on Phase 1 for Fortran; COBOL is ready now)**
+
+| Ticket | Title | Role | Status |
+| ------ | ----- | ---- | ------ |
+| G4-006 | Ingest OpenCOBOL Contrib | Uses existing COBOL pipeline — can start immediately | TODO |
+| G4-003 | Ingest GNU Fortran | Download + preprocess + embed + index (needs G4-001/002) | TODO |
+| G4-004 | Ingest LAPACK | Largest Fortran codebase (needs G4-001/002) | TODO |
+| G4-005 | Ingest BLAS | Smallest Fortran, good validation target (needs G4-001/002) | TODO |
+
+**Phase 3 — Multi-Codebase + Context Assembly (depends on Phase 2)**
+
+| Ticket | Title | Role | Status |
+| ------ | ----- | ---- | ------ |
+| G4-007 | Multi-codebase query support | Test cross-codebase queries with real data, verify codebase filter | TODO |
+| NEW | Context assembly (`context.py`) | Dynamic token budget, top-1 hierarchical expansion | TODO |
+
+**Phase 4 — Feature Hardening (depends on Phase 3 for multi-codebase test data)**
+
+| Ticket | Title | Role | Status |
+| ------ | ----- | ---- | ------ |
+| G4-010–017 | Feature audit + hardening | Verify all 8 features produce quality answers against real multi-codebase data. Add custom retrieval strategies for Pattern Detection, Impact Analysis, Dependency Mapping if prompt-only is insufficient. | PARTIAL |
+| G4-018 | Feature router (if needed) | Implement `features/router.py` only if per-feature retrieval strategies are needed | PARTIAL |
+| G4-019 | Cohere re-ranking | Already implemented in MVP-010 | DONE |
+
+**Phase 5 — Evaluation (depends on Phase 2 + Phase 4)**
+
+| Ticket | Title | Role | Status |
+| ------ | ----- | ---- | ------ |
+| G4-008 | Ground truth evaluation dataset | 15 manual + 35 LLM-generated, 50+ query/answer pairs across all codebases and features | TODO |
+| G4-009 | Evaluation script | precision@5, per-codebase, per-feature breakdown | TODO |
+| G4-022 | Full evaluation run | Run eval, fix regressions, document results | TODO |
+
+**Phase 6 — Documentation (depends on Phase 5 for real metrics)**
+
+| Ticket | Title | Role | Status |
+| ------ | ----- | ---- | ------ |
+| G4-020 | Architecture document | System design, diagrams, metrics from eval run | TODO |
+| G4-021 | Cost analysis document | Real API spend + 4-tier projections (100/1K/10K/100K users) | TODO |
 
 ---
 
-## GFA Final Scope (GFA-001 → GFA-016)
+## GFA Final Scope (Revised)
 
-| Ticket  | Title                              | Role                                           |
-| ------- | ---------------------------------- | ---------------------------------------------- |
-| GFA-001 | Next.js project setup              | Frontend — Next.js 14 + Tailwind + app router   |
-| GFA-002 | Dashboard page                     | Frontend — codebase overview, ingestion status   |
-| GFA-003 | Query page                         | Frontend — query input, streaming results        |
-| GFA-004 | CodeBlock component                | Frontend — syntax highlighting, line numbers     |
-| GFA-005 | Result detail page                 | Frontend — full result with citations            |
-| GFA-006 | Codebase explorer page             | Frontend — browse files per codebase             |
-| GFA-007 | UI polish                          | Frontend — dark mode, responsive, animations     |
-| GFA-008 | CLI polish                         | CLI — Rich formatting, JSON mode, progress bars  |
-| GFA-009 | Vercel deployment                  | Deploy — frontend + API proxy + end-to-end test  |
-| GFA-010 | Cron keepalive                     | Ops — UptimeRobot preventing Render spin-down    |
-| GFA-011 | Confidence score calibration       | Quality — calibrate HIGH/MED/LOW thresholds      |
-| GFA-012 | Embedding cache                    | Perf — LRU cache for repeated query embeddings   |
-| GFA-013 | Demo video recording               | Deliverable — 3.5 min narrative-driven demo      |
-| GFA-014 | Social media post                  | Deliverable — LinkedIn/X post, tag @GauntletAI   |
-| GFA-015 | Final documentation pass           | Deliverable — README, architecture, checklist     |
-| GFA-016 | Final regression testing           | Gate — full eval + manual testing + submission    |
+### Post-MVP-017 Assessment
+
+MVP-017 (Web Interface) was originally a GFA-phase ticket but was pulled forward into MVP to satisfy the "deployed and publicly accessible" hard gate with a real UI. This front-loaded significant GFA work:
+
+**Completed by MVP-017 (close without new work):**
+
+| Ticket | Title | Why It's Done |
+| ------ | ----- | ------------- |
+| GFA-001 | Next.js project setup | `frontend/` created with Next.js 14 + TypeScript + Tailwind + App Router |
+| GFA-003 | Query page | Full query page: feature selector, contextual input, example queries, response panel |
+| GFA-005 | Result detail page | Citations displayed as collapsible list with file:line format in ResponsePanel |
+| GFA-007 | UI polish | Dark theme (slate/emerald), responsive layout, loading/error/empty states, custom scrollbars |
+| GFA-009 | Vercel deployment | Deployed on Vercel with API route proxies and `LEGACYLENS_API_URL` env var |
+
+**Remaining GFA tickets:**
+
+| Ticket | Title | Role | Priority | Status |
+| ------ | ----- | ---- | -------- | ------ |
+| GFA-002 | Dashboard page | Codebase overview, ingestion stats | Nice-to-have | TODO |
+| GFA-004 | CodeBlock component | Syntax highlighting + line numbers in citations | Nice-to-have | TODO |
+| GFA-006 | Codebase explorer page | Browse files per codebase | Nice-to-have | TODO |
+| GFA-008 | CLI polish | Rich formatting, JSON mode, progress bars | Medium | TODO |
+| GFA-010 | Cron keepalive | UptimeRobot to prevent Render free-tier spin-down | High | TODO |
+| GFA-011 | Confidence score calibration | Calibrate HIGH/MED/LOW thresholds against eval data | Medium (needs G4-022) | TODO |
+| GFA-012 | Embedding cache | LRU cache for repeated query embeddings | Medium | TODO |
+| GFA-013 | Demo video recording | 3.5 min narrative-driven demo — required deliverable | Required | TODO |
+| GFA-014 | Social media post | LinkedIn/X post, tag @GauntletAI — required deliverable | Required | TODO |
+| GFA-015 | Final documentation pass | README, architecture doc, checklist — required deliverable | Required | TODO |
+| GFA-016 | Final regression testing | Full eval + manual testing + submission — required gate | Required | TODO |
+
+### GFA Execution Order (Revised)
+
+```
+1. GFA-010  Cron keepalive (quick win, prevents cold-start frustration during all testing)
+2. GFA-008  CLI polish (if time permits)
+3. GFA-004  CodeBlock component (if time permits — enhances citation display)
+4. GFA-012  Embedding cache (if time permits)
+5. GFA-011  Confidence calibration (needs G4-022 eval data first)
+6. GFA-015  Final documentation pass (after all code work is done)
+7. GFA-013  Demo video recording (after docs, with everything polished)
+8. GFA-014  Social media post (after video)
+9. GFA-016  Final regression testing (last gate before submission)
+
+Deprioritized (only if time):
+- GFA-002  Dashboard page
+- GFA-006  Codebase explorer page
+```
 
 ---
 
