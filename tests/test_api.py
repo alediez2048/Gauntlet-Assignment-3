@@ -286,6 +286,32 @@ def test_stream_route_streams_text_response(
     assert response.text == "alpha beta"
 
 
+def test_health_returns_deterministic_200_payload(client: TestClient) -> None:
+    """Deployment readiness: health route returns stable contract for Render health checks."""
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {"status": "ok"}
+
+
+def test_codebases_returns_deterministic_200_payload(client: TestClient) -> None:
+    """Deployment readiness: codebases route returns configured codebase metadata."""
+    response = client.get("/api/codebases")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "codebases" in payload
+    codebases = payload["codebases"]
+    assert isinstance(codebases, list)
+    assert len(codebases) >= 1
+    for item in codebases:
+        assert "name" in item
+        assert "language" in item
+        assert "description" in item
+        assert isinstance(item["name"], str)
+        assert isinstance(item["language"], str)
+        assert isinstance(item["description"], str)
+
+
 def test_query_maps_reranker_failure_to_http_500(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

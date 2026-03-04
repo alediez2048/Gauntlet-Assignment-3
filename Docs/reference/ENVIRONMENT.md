@@ -189,29 +189,41 @@ python -m src.cli.main evaluate --dataset evaluation/ground_truth.json
 
 | Service | Platform | URL (placeholder) | Config File |
 |---|---|---|---|
-| API Backend | Render (free tier, Docker) | `https://gauntlet-assignment-3.onrender.com` | `render.yaml` |
+| API Backend | Render (free tier, Docker) | `https://<service-name>.onrender.com` | `render.yaml` |
 | Web Frontend | Vercel (free tier, Next.js) | `Pending (not deployed in Phase 0)` | `vercel.json` (planned in GFA-009) |
 | Vector DB | Qdrant Cloud (free 1GB) | `https://your-cluster.qdrant.io:6333` | N/A (managed) |
 
 ### 2.2 Deploy API to Render
 
+**Exact deployment flow:**
+
 1. Connect GitHub repo to Render
 2. Render auto-detects `render.yaml` and `Dockerfile`
-3. Set environment variables in Render dashboard:
+3. Set these environment variables in Render dashboard (required; `sync: false` means set manually):
    - `VOYAGE_API_KEY`
    - `OPENAI_API_KEY`
    - `COHERE_API_KEY`
    - `QDRANT_URL`
    - `QDRANT_API_KEY`
-   - `LEGACYLENS_LLM_MODEL=gpt-4o`
-   - `LEGACYLENS_COLLECTION=legacylens`
-4. Deploy triggers automatically on push to `main`
+4. Defaults (in `render.yaml`): `LEGACYLENS_LLM_MODEL=gpt-4o`, `LEGACYLENS_COLLECTION=legacylens`
+5. Deploy triggers automatically on push to `main`
 
-**Current live status (Phase 0):**
-- Service URL: `https://gauntlet-assignment-3.onrender.com`
-- `GET /api/health` returns `200` with `{"status":"ok"}`
-- `GET /api/codebases` returns configured codebase metadata
-- `GET /` returns `404` (expected until a root route is intentionally added)
+**Production verification commands (run after deploy):**
+
+```bash
+# Health — must return 200 and {"status":"ok"}
+curl -s https://<your-render-service>.onrender.com/api/health
+
+# Codebases — must return 200 and {"codebases":[...]}
+curl -s https://<your-render-service>.onrender.com/api/codebases
+
+# Query sanity (requires ingested codebase)
+curl -sS -X POST https://<your-render-service>.onrender.com/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query":"What does MAIN-LOGIC do?","feature":"code_explanation","codebase":"gnucobol"}'
+```
+
+**Known free-tier behavior:** Render free tier spins down after ~15 min inactivity. First request after spin-down takes 10–30 seconds (cold start). Retry once before treating as failure.
 
 ### 2.3 Deploy Frontend to Vercel
 
@@ -230,11 +242,11 @@ python -m src.cli.main evaluate --dataset evaluation/ground_truth.json
 ### 2.4 Verify Production Health
 
 ```bash
-# API
-curl -s https://gauntlet-assignment-3.onrender.com/api/health
+# API (replace with your Render service URL)
+curl -s https://<your-render-service>.onrender.com/api/health
+curl -s https://<your-render-service>.onrender.com/api/codebases
 
-# Frontend
-# Pending until frontend is deployed in GFA phase
+# Frontend — pending until GFA-009
 # curl -s https://<your-vercel-domain>.vercel.app -o /dev/null -w "%{http_code}"
 ```
 
@@ -245,8 +257,8 @@ Render free tier spins down after 15 minutes of inactivity. First request after 
 **Solution:** UptimeRobot (free) pinging the health endpoint every 5 minutes.
 
 1. Sign up at https://uptimerobot.com/
-2. Add monitor: HTTP, `https://gauntlet-assignment-3.onrender.com/api/health`, every 5 min
-3. The health endpoint must warm the full stack (verify Qdrant connectivity), not just return 200
+2. Add monitor: HTTP, `https://<your-render-service>.onrender.com/api/health`, every 5 min
+3. The health endpoint returns `{"status":"ok"}` — it does not verify Qdrant; query failures indicate misconfigured QDRANT_URL/QDRANT_API_KEY
 
 ### 2.6 Production Ingestion
 
@@ -431,8 +443,9 @@ Before any demo or grading session, run these checks:
 ### 7.1 Production Health
 
 ```bash
-curl -s https://gauntlet-assignment-3.onrender.com/api/health
-curl -s https://gauntlet-assignment-3.onrender.com/api/codebases
+# Replace <your-render-service> with your actual Render service URL
+curl -s https://<your-render-service>.onrender.com/api/health
+curl -s https://<your-render-service>.onrender.com/api/codebases
 # After GFA frontend deploy:
 # curl -s https://<your-vercel-domain>.vercel.app -o /dev/null -w "%{http_code}\n"
 ```
@@ -442,17 +455,17 @@ Render endpoints should return 200. If the API returns nothing, it's in cold sta
 ### 7.2 Query Smoke Test
 
 ```bash
-# Phase 0 baseline smoke test
-curl -s https://gauntlet-assignment-3.onrender.com/api/health
-curl -s https://gauntlet-assignment-3.onrender.com/api/codebases | python3 -c "import sys,json; d=json.load(sys.stdin); print('Codebases:', len(d.get('codebases', [])))"
+# Baseline operational check
+curl -s https://<your-render-service>.onrender.com/api/health
+curl -s https://<your-render-service>.onrender.com/api/codebases | python3 -c "import sys,json; d=json.load(sys.stdin); print('Codebases:', len(d.get('codebases', [])))"
 
-# MVP+ smoke test (after /api/query is implemented in MVP-013)
-# curl -sS -X POST https://gauntlet-assignment-3.onrender.com/api/query \
-#   -H "Content-Type: application/json" \
-#   -d '{"query":"What does CALCULATE-INTEREST do?","feature":"code_explanation"}'
+# Query smoke test (requires ingested codebase)
+curl -sS -X POST https://<your-render-service>.onrender.com/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query":"What does MAIN-LOGIC do?","feature":"code_explanation","codebase":"gnucobol"}'
 ```
 
-Expected (Phase 0): health status is `ok`; codebases count is 5.
+Expected: health `{"status":"ok"}`; codebases count 5; query returns cited answer.
 
 ### 7.3 Evaluation Run
 

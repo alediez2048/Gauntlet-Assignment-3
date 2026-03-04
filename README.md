@@ -68,7 +68,7 @@ See [system-design.md](Docs/architecture/system-design.md) for the full data flo
 
 **Tech Stack:** Python 3.11 · FastAPI · Qdrant · Voyage Code 2 · GPT-4o · Next.js 14 · Click + Rich
 
-**Deployed:** [Web UI](https://legacylens.vercel.app) · [API](https://legacylens.onrender.com)
+**Deployed:** API on Render (`render.yaml` + `Dockerfile`). See [Environment Guide](Docs/reference/ENVIRONMENT.md) for deployment and verification steps.
 
 ## Documentation
 

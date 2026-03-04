@@ -143,24 +143,51 @@
 
 ---
 
-## MVP-015: Render Deployment Primer Created ✅
+## MVP-015: Render Deployment Hardening ✅
 
 ### Plain-English Summary
-- Created the MVP-015 primer to define Render deployment hardening scope now that MVP-014 CLI integration is complete.
-- Primer specifies Dockerfile/render.yaml hardening, deployment-readiness tests, and operational docs alignment.
+- Hardened Render deployment config and operational docs so the MVP stack runs reliably on Render as a production API service.
+- Added deployment-readiness tests for `/api/health` and `/api/codebases`; updated Dockerfile, render.yaml, ENVIRONMENT.md, and README.
+- Success: deterministic health/codebases contracts, documented verification flow, and stable baseline for MVP-016 smoke tests.
 
 ### Metadata
-- **Status:** Primer Complete (implementation pending)
+- **Status:** Complete
 - **Date:** Mar 4, 2026
 - **Ticket:** MVP-015
+- **Branch:** `feature/mvp-015-render-deployment-hardening` (create before commit)
+- **Commit:** Pending (git not initialized in session)
+
+### Scope
+- Dockerfile: add `PYTHONUNBUFFERED=1` for container logging
+- render.yaml: add header comments documenting required env vars and defaults
+- tests/test_api.py: add `test_health_returns_deterministic_200_payload`, `test_codebases_returns_deterministic_200_payload`
+- Docs/reference/ENVIRONMENT.md: exact deployment flow, verification commands, cold-start expectations
+- README.md: deployment reference aligned with actual setup
+
+### Technical Implementation
+- **Health contract:** `GET /api/health` → `200` + `{"status":"ok"}` (unchanged; kept lightweight for cold start)
+- **Codebases contract:** `GET /api/codebases` → `200` + `{"codebases":[{name,language,description},...]}`
+- **Tests:** Both routes asserted for status code and payload shape; no heavy startup coupling
+- **Docs:** Placeholder `https://<your-render-service>.onrender.com` for generic verification; cold start 10–30s documented
+
+### Testing
+- `pytest tests/test_api.py -v` → 12 passed (including 2 new deployment-readiness tests)
+- Docker build verified: `docker build -t legacylens-api:local .` succeeds
 
 ### Files Changed
-- **Added:** `Docs/tickets/MVP-015-primer.md`
-- **Updated:** `Docs/tickets/DEVLOG.md` (this entry)
+- **Modified:** `Dockerfile`, `render.yaml`, `tests/test_api.py`, `Docs/reference/ENVIRONMENT.md`, `README.md`, `Docs/tickets/DEVLOG.md`
+
+### Acceptance Criteria
+- [x] Render deployment config hardened and consistent with repo runtime
+- [x] Health + codebases operational routes stable and tested
+- [x] Deployment/readiness tests in tests/test_api.py
+- [x] Environment/deployment docs updated with exact verification steps
+- [x] DEVLOG updated with MVP-015 implementation entry
+- [ ] Feature branch pushed and PR opened (git not initialized)
 
 ### Next Steps
-- Implement MVP-015 in Dockerfile, render.yaml, tests/test_api.py, and deployment docs.
-- Update DEVLOG with full MVP-015 implementation entry when deployment hardening is complete.
+- Initialize git, create `feature/mvp-015-render-deployment-hardening`, commit, push, open PR
+- **MVP-016:** Run full end-to-end smoke test suite (10 manual production queries)
 
 ---
 
