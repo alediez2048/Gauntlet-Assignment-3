@@ -1,0 +1,67 @@
+{
+  "description": "MVP-016 smoke test queries for end-to-end validation",
+  "api_url": "https://gauntlet-assignment-3.onrender.com",
+  "codebase": "gnucobol",
+  "queries": [
+    {
+      "id": 1,
+      "feature": "code_explanation",
+      "query": "What does MAIN-LOGIC do?",
+      "purpose": "Basic explanation"
+    },
+    {
+      "id": 2,
+      "feature": "code_explanation",
+      "query": "Explain the INIT-DATA paragraph",
+      "purpose": "Paragraph-specific"
+    },
+    {
+      "id": 3,
+      "feature": "code_explanation",
+      "query": "What does CALCULATE-INTEREST do?",
+      "purpose": "Business logic"
+    },
+    {
+      "id": 4,
+      "feature": "dependency_mapping",
+      "query": "What PARAGRAPHS does MAIN-LOGIC call?",
+      "purpose": "Dependency tracing"
+    },
+    {
+      "id": 5,
+      "feature": "dependency_mapping",
+      "query": "Trace PERFORM calls from MAIN-LOGIC",
+      "purpose": "Call chain"
+    },
+    {
+      "id": 6,
+      "feature": "pattern_detection",
+      "query": "Find similar code patterns to MAIN-LOGIC",
+      "purpose": "Similarity search"
+    },
+    {
+      "id": 7,
+      "feature": "documentation_gen",
+      "query": "Generate documentation for MAIN-LOGIC",
+      "purpose": "Doc generation"
+    },
+    {
+      "id": 8,
+      "feature": "translation_hints",
+      "query": "How would MAIN-LOGIC look in Python?",
+      "purpose": "Translation"
+    },
+    {
+      "id": 9,
+      "feature": "bug_pattern_search",
+      "query": "Find potential bug patterns in gnucobol",
+      "purpose": "Bug detection"
+    },
+    {
+      "id": 10,
+      "feature": "business_logic",
+      "query": "Extract business rules from gnucobol",
+      "purpose": "Rule extraction"
+    }
+  ]
+}

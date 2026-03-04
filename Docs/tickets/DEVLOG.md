@@ -191,6 +191,49 @@
 
 ---
 
+## MVP-016: End-to-End Smoke Test 🚧
+
+### Plain-English Summary
+- Kickstarted MVP-016: created smoke test checklist, query list, run script, and executed 10 queries against deployed API.
+- Health and codebases endpoints return 200; query endpoint returns 500 with "retrieval failed: Failed to embed query."
+- **Blocking issue:** Voyage AI embedding API failing — likely `VOYAGE_API_KEY` missing/invalid on Render (or local .env). Fix env vars, re-run smoke test.
+
+### Metadata
+- **Status:** In progress (blocked on embedding config)
+- **Date:** Mar 4, 2026
+- **Ticket:** MVP-016
+- **Branch:** `feature/mvp-016-smoke-test`
+
+### Scope
+- Run 10 manual production queries against deployed Render API
+- Cover 3–4+ features, codebase gnucobol
+- Record results, fix blocking bugs, update DEVLOG
+
+### Key Achievements
+- Created `Docs/reference/SMOKE_TEST.md` with checklist and curl commands
+- Created `evaluation/smoke_test_queries.json` with 10 reproducible queries
+- Created `evaluation/run_smoke_test.py` (httpx-based runner)
+- Health: `GET https://gauntlet-assignment-3.onrender.com/api/health` → 200
+- Codebases: `GET .../api/codebases` → 200, 5 codebases
+- Query: all 10 return 500 — "retrieval failed: Failed to embed query"
+
+### Errors / Bugs / Problems
+- **Embedding failure:** All `/api/query` requests return 500. Error: `retrieval failed: Failed to embed query.`
+- **Root cause:** Voyage AI API call fails — `VOYAGE_API_KEY` likely missing or invalid in Render dashboard (or .env for local Docker).
+- **Fix:** Verify `VOYAGE_API_KEY` in Render Environment tab; see `Docs/reference/ENVIRONMENT.md` for verification commands.
+
+### Files Changed
+- **Created:** `Docs/reference/SMOKE_TEST.md`, `evaluation/smoke_test_queries.json`, `evaluation/run_smoke_test.py`
+- **Modified:** `Docs/tickets/DEVLOG.md` (this entry)
+
+### Next Steps
+- Fix `VOYAGE_API_KEY` on Render (and/or local .env)
+- Re-run `API_URL="https://gauntlet-assignment-3.onrender.com" python evaluation/run_smoke_test.py`
+- Target: ≥8/10 pass with cited answers
+- Update DEVLOG with final results when done
+
+---
+
 ## Timeline
 
 | Phase     | Days                  | Target                                                                      |

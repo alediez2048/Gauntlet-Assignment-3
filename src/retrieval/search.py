@@ -237,7 +237,12 @@ def _search_sparse_bm25(
     query_filter: Filter | None,
     limit: int,
 ) -> list[object]:
-    """Run sparse/BM25 retrieval channel in Qdrant."""
+    """Run sparse/BM25 retrieval channel in Qdrant.
+
+    Returns empty list if sparse/BM25 is not configured (e.g. collection has only
+    dense vectors). This allows dense-only retrieval to work when sparse vectors
+    were not indexed.
+    """
     sparse_query = Document(text=query_text, model=SPARSE_BM25_MODEL)
 
     try:
@@ -261,8 +266,10 @@ def _search_sparse_bm25(
                 with_vectors=False,
             )
             return _extract_points(fallback_response)
-        except Exception as fallback_exc:
-            raise SearchBackendError("Sparse/BM25 retrieval failed.") from fallback_exc
+        except Exception:
+            # Sparse/BM25 not configured (e.g. collection has only dense vectors).
+            # Return empty so hybrid_search continues with dense-only results.
+            return []
 
 
 def _point_id(point: object) -> str:
