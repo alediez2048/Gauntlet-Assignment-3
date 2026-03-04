@@ -7,6 +7,106 @@
 
 ---
 
+## MVP-009: Hybrid Search Module ✅
+
+### Plain-English Summary
+- Implemented `hybrid_search()` in `src/retrieval/search.py` to run dual retrieval channels (dense vectors + sparse/BM25 text query) via Qdrant-native query paths.
+- Added deterministic query classification for adaptive channel weighting: identifier-heavy queries favor BM25, semantic queries favor dense retrieval.
+- Added deterministic weighted fusion, deduplication by point ID, top-k limiting, and typed mapping to `RetrievedChunk`.
+- Added typed configuration/validation/error handling for query input, Voyage embedding, and Qdrant retrieval failures.
+- Added 15 focused unit tests in `tests/test_retrieval.py` and validated red-to-green TDD cycle.
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-009
+- **Branch:** `feature/mvp-009-hybrid-search`
+
+### Scope
+- Implement hybrid retrieval contract in `src/retrieval/search.py`
+- Keep module retrieval-only (no reranking, generation, API, or context assembly logic)
+- Return stable `list[RetrievedChunk]` outputs from fused channel results
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `hybrid_search` | `(query: str, top_k: int = DEFAULT_TOP_K, codebase: str \| None = None, collection_name: str = QDRANT_COLLECTION_NAME) -> list[RetrievedChunk]` | Fused, ranked retrieval chunks |
+
+#### Helper Signatures Added
+
+| Helper | Purpose |
+|--------|---------|
+| `_validate_query_inputs(query: str, top_k: int) -> None` | Deterministic query argument validation |
+| `_build_qdrant_client() -> QdrantClient` | Build Qdrant client from env config |
+| `_build_voyage_client() -> _VoyageClientProtocol` | Build Voyage embedding client from env config |
+| `_embed_query(client: _VoyageClientProtocol, query: str) -> list[float]` | Query embedding with `input_type="query"` |
+| `_build_query_filter(codebase: str \| None) -> Filter \| None` | Optional metadata filter for codebase routing |
+| `_is_identifier_query(query: str) -> bool` | Query-type classification heuristic |
+| `_select_channel_weights(query: str) -> tuple[float, float]` | Adaptive dense/sparse weighting |
+| `_search_dense(...) -> list[object]` | Dense retrieval channel call |
+| `_search_sparse_bm25(...) -> list[object]` | Sparse/BM25 retrieval channel call |
+| `_fuse_channel_results(...) -> list[_FusedPoint]` | Deterministic normalization, weighted fusion, dedupe, ranking |
+| `_to_retrieved_chunk(point: _FusedPoint) -> RetrievedChunk` | Output contract mapping with safe fallbacks |
+
+#### Query-Type and Weighting Assumptions
+- Identifier-heavy query (e.g. COBOL-like tokens, uppercase symbols, hyphen/underscore identifiers):
+  - `dense=0.4`, `sparse=0.6`
+- Semantic/natural language query:
+  - `dense=0.7`, `sparse=0.3`
+
+#### Fusion and Ordering Strategy
+- Dense and sparse channels are normalized independently to `[0.0, 1.0]` per request.
+- Fused score is deterministic weighted sum: `dense_norm * dense_weight + sparse_norm * sparse_weight`.
+- Duplicate chunk IDs across channels are merged deterministically by ID.
+- Final ordering tie-breakers:
+  1. fused score (desc)
+  2. dense score (desc)
+  3. sparse score (desc)
+  4. lexical point ID (asc)
+
+### Testing
+- Added **15 tests** in `tests/test_retrieval.py`
+- Validated TDD sequence:
+  1. Tests written first
+  2. Initial run failed at import/collection (expected with empty `src/retrieval/search.py`)
+  3. Implementation added in `src/retrieval/search.py`
+  4. Re-run passed (`15 passed`)
+- Validation coverage includes:
+  - blank query and invalid `top_k` input errors
+  - missing `QDRANT_URL` / `VOYAGE_API_KEY` config errors
+  - adaptive weighting behavior
+  - codebase filter propagation to both channels
+  - deterministic dedupe + ranking + top-k truncation
+  - empty-result behavior
+  - typed error surfacing for Voyage and Qdrant failures
+- Regression and lint verification:
+  - `ruff check . --fix` -> passed
+  - `python -m pytest tests/ -v` -> `107 passed`, `2 failed` (pre-existing `tests/test_cobol_parser.py::TestEncodingDetection` failures)
+
+### Files Changed
+- **Modified:** `src/retrieval/search.py` - MVP-009 hybrid retrieval implementation
+- **Modified:** `tests/test_retrieval.py` - 15 MVP-009 retrieval unit tests
+- **Updated:** `Docs/tickets/DEVLOG.md` - this entry
+
+### Acceptance Criteria
+- [x] `src/retrieval/search.py` implemented with `hybrid_search()` and helper logic
+- [x] Dense + BM25 channels executed through Qdrant-native query paths
+- [x] Query-adaptive weighting implemented for identifier vs semantic queries
+- [x] Optional `codebase` filter applied via payload metadata filter
+- [x] Results returned as `list[RetrievedChunk]` with deterministic mapping and ranking
+- [x] Unit tests added and passing in `tests/test_retrieval.py`
+- [x] TDD flow followed (failing state observed before implementation)
+- [x] DEVLOG updated with MVP-009 entry
+
+### Notes
+- Full-suite parser encoding failures remain pre-existing and outside MVP-009 scope.
+- MVP-009 now provides the retrieval contract required by MVP-010 reranking.
+
+---
+
 ## MVP-008: Qdrant Indexer Module ✅
 
 ### Plain-English Summary
