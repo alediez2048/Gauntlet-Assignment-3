@@ -7,6 +7,96 @@
 
 ---
 
+## MVP-007: Batch Embedding Module ✅
+
+### Plain-English Summary
+- Implemented `embed_chunks()` end-to-end in `src/ingestion/embedder.py` to convert `Chunk` objects into deterministic `EmbeddedChunk` outputs
+- Added strict batch-only embedding flow (no per-chunk API calls), preserving input order across multi-batch requests
+- Added deterministic `chunk_id` generation (`{codebase}:{file_path}:{line_start}`) for stable downstream indexing
+- Added dimension validation against `EMBEDDING_DIMENSIONS` (1536) with explicit typed errors
+- Added timeout retry handling with exponential backoff and clear failure behavior after max attempts
+- Added 11 focused unit tests in `tests/test_embedder.py` and validated red->green TDD cycle
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 3, 2026
+- **Ticket:** MVP-007
+
+### Scope
+- Implement batch embedding module for ingestion outputs
+- Preserve strict contract: `embed_chunks(chunks: list[Chunk], model: str = EMBEDDING_MODEL, batch_size: int = EMBEDDING_BATCH_SIZE) -> list[EmbeddedChunk]`
+- Keep module ingestion-only (no Qdrant indexing, retrieval, or generation logic)
+
+### Technical Implementation
+
+#### Public API
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `embed_chunks` | `(chunks: list[Chunk], model: str = EMBEDDING_MODEL, batch_size: int = EMBEDDING_BATCH_SIZE) -> list[EmbeddedChunk]` | Deterministic embedded chunk payloads |
+
+#### Helper Signatures Added
+
+| Helper | Purpose |
+|--------|---------|
+| `_build_voyage_client() -> _VoyageClientProtocol` | Build `voyageai.Client` from `VOYAGE_API_KEY` |
+| `_batched(items: Sequence[T], size: int) -> Iterator[list[T]]` | Deterministic batch slicing |
+| `_embed_batch_with_retry(...) -> list[list[float]]` | Batch embed with timeout retries/backoff |
+| `_validate_dimensions(vectors: list[list[float]], expected_dimensions: int = EMBEDDING_DIMENSIONS) -> None` | Enforce 1536-dim vector contract |
+| `_build_chunk_id(chunk: Chunk) -> str` | Stable downstream ID generation |
+| `_attach_vectors(chunks: list[Chunk], vectors: list[list[float]]) -> list[EmbeddedChunk]` | Preserve order while attaching vectors |
+
+#### Retry Assumptions and Error Behavior
+- Timeout retries are capped at **3 attempts** per batch
+- Backoff schedule is exponential: **0.5s -> 1.0s -> 2.0s**
+- Timeout handling is typed (`TimeoutError` + voyage timeout subclasses when available)
+- Final timeout failure raises `EmbeddingRetryError` with deterministic message
+- Missing API key fails fast with `EmbeddingConfigError`
+- Wrong vector size fails fast with `EmbeddingDimensionError`
+
+#### Deterministic ID Strategy
+- Every `EmbeddedChunk.chunk_id` is generated as:
+  - `{codebase}:{file_path}:{line_start}`
+- This keeps IDs stable across runs for reliable MVP-008 upsert behavior
+
+### Testing
+- Added **11 tests** in `tests/test_embedder.py`
+- Validated TDD sequence:
+  1. Tests written first
+  2. Initial run failed (expected, missing embedder contract)
+  3. Implementation added in `src/ingestion/embedder.py`
+  4. Re-run passed (`11 passed`)
+- Coverage includes:
+  - return contract (`list[EmbeddedChunk]`, original chunk preserved)
+  - batching behavior (`0`, `1`, and `257` chunk scenarios)
+  - request shape (`model`, `input_type="document"`)
+  - dimension validation (pass + fail)
+  - deterministic `chunk_id`
+  - transient and permanent timeout retry behavior
+  - order stability across batches
+  - invalid batch size handling
+
+### Files Changed
+- **Modified:** `src/ingestion/embedder.py` - MVP-007 batch embedding implementation
+- **Modified:** `tests/test_embedder.py` - 11 MVP-007 unit tests
+- **Updated:** `Docs/tickets/DEVLOG.md` - this entry
+
+### Acceptance Criteria
+- [x] `src/ingestion/embedder.py` implemented with `embed_chunks()` and helper logic
+- [x] Embedding calls are batch-only and use Voyage Code 2 config
+- [x] Retry with exponential backoff implemented (3 attempts)
+- [x] All output vectors validated to 1536 dimensions
+- [x] Output is `list[EmbeddedChunk]` with deterministic `chunk_id`
+- [x] Unit tests added and passing in `tests/test_embedder.py`
+- [x] TDD cycle followed (failing state observed before implementation)
+- [x] DEVLOG updated with MVP-007 entry
+
+### Notes
+- `tests/test_embedder.py` passes fully in local run.
+- Full regression run currently reports 2 failures in `tests/test_cobol_parser.py` (`TestEncodingDetection`), matching pre-existing encoding-detection/runtime sensitivity and outside MVP-007 scope.
+
+---
+
 ## MVP-006: COBOL Chunk Metadata & Dependency Extraction ✅
 
 ### Plain-English Summary
