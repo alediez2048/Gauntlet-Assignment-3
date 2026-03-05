@@ -1,3 +1,247 @@
 {
-  "queries": []
+  "queries": [
+    {
+      "id": "q001",
+      "query": "How does DGETRF perform LU factorization?",
+      "codebase": "lapack",
+      "feature": "code_explanation",
+      "expected_files": ["dgetrf.f"],
+      "expected_names": ["DGETRF"],
+      "notes": "Should retrieve the main DGETRF subroutine and explain pivoted LU decomposition"
+    },
+    {
+      "id": "q002",
+      "query": "What does DGEMM do for matrix multiplication?",
+      "codebase": "blas",
+      "feature": "code_explanation",
+      "expected_files": ["dgemm.f"],
+      "expected_names": ["DGEMM"],
+      "notes": "Should retrieve DGEMM and explain general matrix-matrix multiply"
+    },
+    {
+      "id": "q003",
+      "query": "What does the SAXPY routine compute?",
+      "codebase": "blas",
+      "feature": "code_explanation",
+      "expected_files": ["saxpy"],
+      "expected_names": ["SAXPY"],
+      "notes": "Should retrieve SAXPY and explain y := alpha*x + y"
+    },
+    {
+      "id": "q004",
+      "query": "What subroutines does DGESV call?",
+      "codebase": "lapack",
+      "feature": "dependency_mapping",
+      "expected_files": ["dgesv.f"],
+      "expected_names": ["DGESV"],
+      "notes": "Should retrieve DGESV driver and its callee subroutines"
+    },
+    {
+      "id": "q005",
+      "query": "What BLAS routines are used internally?",
+      "codebase": "blas",
+      "feature": "dependency_mapping",
+      "expected_files": [".f"],
+      "expected_names": ["DGEMM", "DAXPY", "DCOPY", "DSCAL"],
+      "notes": "Should retrieve BLAS routines that call other BLAS routines"
+    },
+    {
+      "id": "q006",
+      "query": "How does the PERFORM statement work?",
+      "codebase": "gnucobol",
+      "feature": "code_explanation",
+      "expected_files": [".cob", ".cbl"],
+      "expected_names": ["PROCEDURE", "PERFORM"],
+      "notes": "gnucobol has only 3 chunks; should hit PROCEDURE DIVISION or PERFORM"
+    },
+    {
+      "id": "q007",
+      "query": "What COBOL sample programs are available?",
+      "codebase": "opencobol-contrib",
+      "feature": "code_explanation",
+      "expected_files": [".cob", ".cbl"],
+      "expected_names": [],
+      "notes": "Should retrieve sample program files from opencobol-contrib"
+    },
+    {
+      "id": "q008",
+      "query": "How would DAXPY look in Python with NumPy?",
+      "codebase": "blas",
+      "feature": "translation_hints",
+      "expected_files": ["daxpy", ".f"],
+      "expected_names": ["DAXPY"],
+      "notes": "Should retrieve DAXPY and provide Python/NumPy translation hints"
+    },
+    {
+      "id": "q009",
+      "query": "What common patterns appear in LAPACK driver routines?",
+      "codebase": "lapack",
+      "feature": "pattern_detection",
+      "expected_files": [".f"],
+      "expected_names": ["DGESV", "DGETRF", "DGETRS"],
+      "notes": "Should retrieve driver routines and identify common patterns"
+    },
+    {
+      "id": "q010",
+      "query": "What would break if DGEMM were modified?",
+      "codebase": "blas",
+      "feature": "impact_analysis",
+      "expected_files": ["dgemm"],
+      "expected_names": ["DGEMM"],
+      "notes": "Should retrieve DGEMM and analyze downstream impact"
+    },
+    {
+      "id": "q011",
+      "query": "Are there any potential issues in the error handling?",
+      "codebase": "lapack",
+      "feature": "bug_pattern_search",
+      "expected_files": [".f"],
+      "expected_names": ["INFO", "XERBLA"],
+      "notes": "Should retrieve error handling code in LAPACK routines"
+    },
+    {
+      "id": "q012",
+      "query": "What does the PROCEDURE DIVISION do in the main program?",
+      "codebase": "gnucobol",
+      "feature": "code_explanation",
+      "expected_files": [".cob", ".cbl"],
+      "expected_names": ["PROCEDURE", "DIVISION"],
+      "notes": "Should retrieve PROCEDURE DIVISION from gnucobol"
+    },
+    {
+      "id": "q013",
+      "query": "What paragraphs are called from the main program flow?",
+      "codebase": "gnucobol",
+      "feature": "dependency_mapping",
+      "expected_files": [".cob", ".cbl"],
+      "expected_names": ["PERFORM", "PARAGRAPH"],
+      "notes": "Should retrieve PERFORM statements and paragraph calls"
+    },
+    {
+      "id": "q014",
+      "query": "How would the file I/O operations look in Python?",
+      "codebase": "gnucobol",
+      "feature": "translation_hints",
+      "expected_files": [".cob", ".cbl"],
+      "expected_names": ["FILE", "READ", "WRITE", "OPEN"],
+      "notes": "Should retrieve COBOL file I-O and provide Python equivalents"
+    },
+    {
+      "id": "q015",
+      "query": "What business rules are implemented in the validation logic?",
+      "codebase": "opencobol-contrib",
+      "feature": "business_logic",
+      "expected_files": [".cob", ".cbl"],
+      "expected_names": [],
+      "notes": "Should retrieve validation and business logic from COBOL samples"
+    },
+    {
+      "id": "q016",
+      "query": "Generate documentation for the COBOL sample programs",
+      "codebase": "opencobol-contrib",
+      "feature": "documentation_gen",
+      "expected_files": [".cob", ".cbl"],
+      "expected_names": [],
+      "notes": "Should retrieve sample programs for documentation generation"
+    },
+    {
+      "id": "q017",
+      "query": "How are Fortran array intrinsics tested?",
+      "codebase": "gfortran",
+      "feature": "code_explanation",
+      "expected_files": [".f90", ".f"],
+      "expected_names": [],
+      "notes": "gfortran test suite; may have 0 chunks if ingestion pending"
+    },
+    {
+      "id": "q017b",
+      "query": "How does Fortran handle array operations?",
+      "codebase": "gfortran",
+      "feature": "code_explanation",
+      "expected_files": [".f90", ".f"],
+      "expected_names": [],
+      "notes": "gfortran test suite"
+    },
+    {
+      "id": "q017c",
+      "query": "What Fortran intrinsic functions are tested?",
+      "codebase": "gfortran",
+      "feature": "code_explanation",
+      "expected_files": [".f90", ".f"],
+      "expected_names": [],
+      "notes": "gfortran test suite"
+    },
+    {
+      "id": "q018",
+      "query": "What does DGEMM do?",
+      "codebase": "blas",
+      "feature": "code_explanation",
+      "expected_files": ["dgemm"],
+      "expected_names": ["DGEMM"],
+      "notes": "Shorter DGEMM query"
+    },
+    {
+      "id": "q019",
+      "query": "How does DGESV solve linear systems?",
+      "codebase": "lapack",
+      "feature": "code_explanation",
+      "expected_files": ["dgesv"],
+      "expected_names": ["DGESV"],
+      "notes": "Should retrieve DGESV driver routine"
+    },
+    {
+      "id": "q020",
+      "query": "Where is file I-O used in COBOL?",
+      "codebase": "opencobol-contrib",
+      "feature": "code_explanation",
+      "expected_files": [".cob", ".cbl"],
+      "expected_names": ["FILE", "READ", "WRITE", "OPEN", "SELECT"],
+      "notes": "Should retrieve COBOL file handling"
+    },
+    {
+      "id": "q021",
+      "query": "What does DCOPY do?",
+      "codebase": "blas",
+      "feature": "code_explanation",
+      "expected_files": ["dcopy", ".f"],
+      "expected_names": ["DCOPY"],
+      "notes": "Should retrieve DCOPY vector copy routine"
+    },
+    {
+      "id": "q022",
+      "query": "How does DGETRS solve triangular systems?",
+      "codebase": "lapack",
+      "feature": "code_explanation",
+      "expected_files": ["dgetrs"],
+      "expected_names": ["DGETRS"],
+      "notes": "Should retrieve DGETRS after LU factorization"
+    },
+    {
+      "id": "q023",
+      "query": "Find potential bug patterns in LAPACK",
+      "codebase": "lapack",
+      "feature": "bug_pattern_search",
+      "expected_files": [".f"],
+      "expected_names": [],
+      "notes": "Should retrieve LAPACK code for bug pattern analysis"
+    },
+    {
+      "id": "q024",
+      "query": "What validation logic exists in the COBOL programs?",
+      "codebase": "opencobol-contrib",
+      "feature": "business_logic",
+      "expected_files": [".cob", ".cbl"],
+      "expected_names": [],
+      "notes": "Should retrieve validation and business rules"
+    },
+    {
+      "id": "q025",
+      "query": "What does DSCAL compute?",
+      "codebase": "blas",
+      "feature": "code_explanation",
+      "expected_files": ["dscal", ".f"],
+      "expected_names": ["DSCAL"],
+      "notes": "Should retrieve DSCAL scale routine"
+    }
+  ]
 }

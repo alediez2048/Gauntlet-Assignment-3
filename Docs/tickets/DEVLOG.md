@@ -7,6 +7,76 @@
 
 ---
 
+## G4-008: Ground Truth Evaluation Dataset + Evaluation Script ✅
+
+### Plain-English Summary
+- Created ground truth evaluation dataset with 27 queries across all 5 codebases and 6 features
+- Implemented `evaluation/evaluate.py` that runs queries against the API and computes precision@5
+- Ran evaluation against deployed API (`https://gauntlet-assignment-3.onrender.com`): **81.5% precision@5** (22/27)
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 4, 2026
+- **Ticket:** G4-008
+- **Branch:** (evaluation-only, no feature branch required)
+
+### Scope
+- Phase 1: Populate `evaluation/ground_truth.json` with 25+ query/answer pairs
+- Phase 2: Implement `evaluation/evaluate.py` with precision@5 metric
+- Phase 3: Run evaluation and record results
+
+### Key Achievements
+- **27 queries** in ground truth (exceeds 25 minimum)
+- **All 5 codebases** represented (lapack 7, blas 8, gnucobol 4, opencobol-contrib 5, gfortran 3)
+- **6 features** represented: code_explanation, dependency_mapping, pattern_detection, impact_analysis, bug_pattern_search, translation_hints, business_logic, documentation_gen
+- **Both languages**: COBOL (gnucobol, opencobol-contrib) and Fortran (lapack, blas, gfortran)
+
+### Evaluation Results (Deployed API)
+
+```
+Precision@5: 81.5% (22/27)
+  blas: 88% (7/8)
+  gfortran: 0% (0/3)
+  gnucobol: 100% (4/4)
+  lapack: 86% (6/7)
+  opencobol-contrib: 100% (5/5)
+```
+
+### Per-Codebase Analysis
+- **gnucobol:** 100% — all 4 queries hit (small corpus, 3 points, but retrieval works)
+- **opencobol-contrib:** 100% — all 5 queries hit
+- **blas:** 88% — 7/8 hit; q010 (impact_analysis "What would break if DGEMM were modified?") missed
+- **lapack:** 86% — 6/7 hit; q004 (dependency_mapping "What subroutines does DGESV call?") missed
+- **gfortran:** 0% — all 3 queries missed; Qdrant count = 0 (ingestion pending)
+
+### MISS Queries
+- **q004** (lapack, dependency_mapping): DGESV callees — retrieval may return different driver routines in top-5
+- **q010** (blas, impact_analysis): DGEMM impact — expected DGEMM in top-5, may need broader expected_names
+- **q017, q017b, q017c** (gfortran): Expected — gfortran has 0 indexed chunks
+
+### Files Changed
+- **Updated:** `evaluation/ground_truth.json` — populated with 27 queries
+- **Updated:** `evaluation/evaluate.py` — full implementation (httpx, precision@5, per-codebase breakdown)
+- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
+
+### Run Evaluation
+```bash
+python evaluation/evaluate.py
+# Or: python evaluation/evaluate.py --api-url http://localhost:8000
+```
+
+### Acceptance Criteria
+- [x] Ground truth dataset has 25+ queries across all 5 codebases and 4+ features
+- [x] Evaluation script runs end-to-end and produces precision@5 with per-codebase breakdown
+- [x] Evaluation results documented in DEVLOG
+- [x] Precision@5 above 70% (81.5% achieved; gfortran excluded would be 22/24 = 91.7%)
+
+### Next Steps
+- Re-run evaluation for gfortran once ingestion completes
+- Optionally refine expected_files/expected_names for q004 and q010 to improve precision
+
+---
+
 ## G4-006: Ingest OpenCOBOL Contrib Source ✅
 
 ### Plain-English Summary
@@ -130,6 +200,94 @@
 - Provider token caps can fail full-speed runs even when request count limits are acceptable; controllable sub-batching is necessary operationally
 - Running pre-embed UTF-8 dry scans catches data issues early and reduces ingestion risk
 - Keeping codebase metadata strict (`codebase="opencobol-contrib"`) preserves corpus isolation despite overlapping COBOL naming patterns
+
+---
+
+## G4-007: Multi-Codebase Query Verification ✅
+
+### Plain-English Summary
+- Verified the query pipeline works correctly across all 5 indexed codebases via the deployed API (`https://gauntlet-assignment-3.onrender.com`)
+- Phase 1: Qdrant counts confirmed 4 non-zero codebases (gnucobol, lapack, blas, opencobol-contrib); gfortran count = 0 (ingestion still running)
+- Phase 2: Per-codebase filtered queries returned relevant chunks from the correct codebase only — no filter leaks
+- Phase 3: Unfiltered cross-codebase query returned chunks from multiple codebases (lapack, blas)
+- Phase 4: Multi-feature spot check (code_explanation, dependency_mapping, translation_hints) produced differentiated answers for BLAS DAXPY query
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 4, 2026
+- **Ticket:** G4-007
+- **Branch:** (verification-only, no feature branch required)
+
+### Scope
+- Verification-only ticket — no new code unless bugs found
+- Confirm `codebase` filter correctly isolates results
+- Verify cross-codebase and multi-feature behavior through deployed API
+
+### Key Achievements
+- All 4 codebases with non-zero count return relevant results when filtered
+- No cross-codebase contamination in filtered queries
+- Unfiltered query returns multi-codebase results
+- Multiple features produce differentiated answer styles
+
+### Verification
+
+#### Qdrant Counts (Phase 1)
+- `gnucobol: 3`
+- `gfortran: 0` (ingestion pending — throttled run still in progress)
+- `lapack: 12515`
+- `blas: 814`
+- `opencobol-contrib: 3893`
+
+#### Per-Codebase Filtered Queries (Phase 2)
+| Codebase | Query | Chunks | All from filtered codebase | Confidence |
+|----------|-------|--------|---------------------------|------------|
+| gnucobol | "How does the PERFORM statement work?" | 3 | ✓ | LOW (expected — only 3 points) |
+| opencobol-contrib | "What COBOL sample programs are available?" | 10 | ✓ | MEDIUM |
+| lapack | "How does DGETRF perform LU factorization?" | 10 | ✓ | HIGH |
+| blas | "What does DGEMM do?" | 10 | ✓ | HIGH |
+
+*gfortran skipped — count = 0*
+
+#### Unfiltered Cross-Codebase Query (Phase 3)
+- Query: "How is matrix multiplication implemented?"
+- Codebases in results: lapack, blas
+- Multi-codebase: ✓
+
+#### Multi-Feature Spot Check (Phase 4)
+- BLAS "What does DAXPY do?" with features: code_explanation, dependency_mapping, translation_hints
+- All 3 features returned distinct answer styles ✓
+
+### Issues & Solutions
+- None — all verification criteria passed
+
+### Errors / Bugs / Problems
+- None found
+
+### Testing
+- Verification script: `scripts/verify_g4_007.py` (Phase 1 + API calls for Phase 2–4)
+- Run: `PYTHONPATH=. .venv/bin/python scripts/verify_g4_007.py`
+- All phases passed
+
+### Files Changed
+- **Created:** `scripts/verify_g4_007.py` — end-to-end verification script (Phase 1–4)
+- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
+
+### Acceptance Criteria
+- [x] Qdrant counts verified (4 non-zero; gfortran skipped)
+- [x] Per-codebase filtered queries executed for each codebase with non-zero count
+- [x] 1 unfiltered cross-codebase query executed
+- [x] 2–3 feature variations tested (BLAS)
+- [x] No codebase filter leaks observed
+- [x] Results recorded in DEVLOG
+- [x] No bugs found requiring fixes
+
+### Next Steps
+- Re-run G4-007 verification for gfortran once ingestion completes
+- Proceed to G4-008/009 evaluation
+
+### Learnings
+- Deployed Render API cold start can take 60+ seconds; verification script uses 120s timeout
+- gnucobol (3 points) yields LOW confidence — expected given small corpus
 
 ---
 
