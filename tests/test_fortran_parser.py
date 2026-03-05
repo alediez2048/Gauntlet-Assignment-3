@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from src.ingestion import fortran_parser
 from src.ingestion.fortran_parser import preprocess_fortran
 from src.types.chunks import ProcessedFile
 
@@ -292,6 +293,24 @@ class TestEncodingDetection:
         result = preprocess_fortran(p)
         assert result.code == ""
         assert result.comments == []
+
+    def test_utf7_detection_overridden_to_utf8(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        p = tmp_path / "utf7-misdetection.f90"
+        source = "program demo\n  print *, 'ok'\nend program demo\n"
+        p.write_bytes(source.encode("utf-8"))
+
+        def fake_detect(_: bytes) -> dict[str, str | float]:
+            return {"encoding": "UTF-7", "confidence": 0.99}
+
+        monkeypatch.setattr(fortran_parser.chardet, "detect", fake_detect)
+
+        result = preprocess_fortran(p)
+        assert result.encoding.lower().replace("-", "") == "utf8"
+        assert "program demo" in result.code.lower()
 
 
 # ---------------------------------------------------------------------------

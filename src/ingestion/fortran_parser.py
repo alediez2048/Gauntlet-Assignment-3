@@ -45,6 +45,13 @@ def _detect_encoding(raw_bytes: bytes, file_path: str) -> str | None:
     if not raw_bytes:
         return "utf-8"
 
+    # Fast path: pure ASCII bytes are always valid UTF-8 source text.
+    try:
+        raw_bytes.decode("ascii")
+        return "utf-8"
+    except UnicodeDecodeError:
+        pass
+
     detection = chardet.detect(raw_bytes)
     confidence: float = detection.get("confidence", 0.0) or 0.0
     encoding: str | None = detection.get("encoding")
@@ -55,6 +62,14 @@ def _detect_encoding(raw_bytes: bytes, file_path: str) -> str | None:
             file_path,
         )
         return None
+
+    normalized = encoding.lower().replace("-", "").replace("_", "")
+    if normalized == "utf7":
+        logger.info(
+            "Overriding chardet utf-7 detection to utf-8 for %s",
+            file_path,
+        )
+        return "utf-8"
 
     if confidence < _ENCODING_CONFIDENCE_THRESHOLD:
         logger.warning(
