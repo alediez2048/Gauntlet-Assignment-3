@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "LegacyLens — Legacy Code Intelligence",
+  title: "DOGE Lense — Legacy Code Intelligence",
   description:
     "RAG-powered legacy code intelligence. Ask questions about COBOL and Fortran codebases in natural language.",
 };
