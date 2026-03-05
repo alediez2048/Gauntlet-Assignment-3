@@ -7,6 +7,132 @@
 
 ---
 
+## G4-006: Ingest OpenCOBOL Contrib Source ✅
+
+### Plain-English Summary
+- Acquired a dedicated OpenCOBOL Contrib corpus into `data/raw/opencobol-contrib/` from the approved contrib mirror source
+- Verified corpus thresholds before embedding: 791 supported COBOL files (`.cob`, `.cbl`, `.cpy`) and 281,733 LOC
+- Ran required pre-embed dry scan (discover -> preprocess -> chunk) and confirmed UTF-8 safety: 791 processed, 3,893 chunks, 0 file errors, 0 UTF-8 encoding failures
+- Initial full-speed ingestion attempt failed due Voyage per-request token cap (`123,330 > 120,000`), then completed successfully via throttled sub-batch execution
+- Final ingestion result: 3,893 chunks indexed to Qdrant with `codebase="opencobol-contrib"`
+- Verified metadata quality, 3 retrieval sanity queries, and no regression for `lapack`, `blas`, and `gnucobol` queryability
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 4, 2026
+- **Ticket:** G4-006
+- **Branch:** `feature/g4-006-resolve-flagged-issues`
+
+### Scope
+- Add OpenCOBOL contrib ingestion runner script
+- Ingest `opencobol-contrib` using reusable `ingest_codebase()` pipeline
+- Verify Qdrant counts, metadata integrity, retrieval sanity, and regression checks
+
+### Key Achievements
+- Dedicated corpus path established and kept separate from `gnucobol` sources
+- Corpus quality gate passed:
+  - Supported files: 791
+  - Total LOC: 281,733
+  - Readability: no unreadable supported files detected
+- Dry scan gate passed:
+  - `files_discovered=791`
+  - `files_processed=791`
+  - `chunks_created=3893`
+  - `chunk_utf8_failures=0`
+  - `file_errors=0`
+- Ingestion completed:
+  - `files_found=791`
+  - `files_processed=791`
+  - `chunks_created=3893`
+  - `chunks_embedded=3893`
+  - `chunks_indexed=3893`
+  - `errors=0`
+  - `skipped_empty=0`
+
+### Technical Implementation
+
+#### Runner Script
+- Added `scripts/run_ingest_opencobol_contrib.py` with default full-speed behavior and optional throttling flags:
+  - `--rate-limit-delay`
+  - `--embed-sub-batch-size`
+
+#### Ingestion Path Used
+- `ingest_codebase(data_dir=..., codebase="opencobol-contrib", language="cobol")`
+- Fallback operational run used throttled settings after token-cap failure during full-speed attempt
+
+### Verification
+
+#### Qdrant Counts
+- `opencobol-contrib: 3893`
+- Regression snapshot:
+  - `lapack: 12515`
+  - `blas: 814`
+  - `gnucobol: 3`
+  - `gfortran: 0` (unchanged from prior ticket state)
+
+#### Metadata Spot-Check (sampled points)
+- All sampled OpenCOBOL points included expected payload keys and values:
+  - `language="cobol"`
+  - `codebase="opencobol-contrib"`
+  - valid `chunk_type="paragraph"`
+  - populated `paragraph_name`
+  - valid `file_path`, `line_start`, `line_end`
+
+#### Search Sanity (3 queries)
+- `How is the command line parsed?` -> 3 hits; top result from `samples/prothsearch/prothsearch.cob`
+- `Where are SQL copybooks used?` -> 3 hits; top result from `tools/printcbl/printcbl.cbl`
+- `How does the report writer print totals?` -> 3 hits; top result from `tools/GCSORT/tests/src/susesqf01Eb.cbl`
+
+#### Regression Queryability
+- `lapack`: hits returned
+- `blas`: hits returned
+- `gnucobol`: hits returned
+
+### Issues & Solutions
+- **Issue:** Voyage rejected initial full-speed embed batch with token cap error (`max 120,000`, submitted `123,330`)
+- **Solution:** Re-ran ingestion with throttled sub-batching to respect provider constraints; ingestion completed successfully
+
+### Errors / Bugs / Problems
+- No data-quality or encoding anomalies found in dry scan
+- A later redundant rerun was intentionally stopped after confirming target count already reached 3,893
+
+### Testing
+- Full suite run on the working branch: `261 passed`
+- Lint run on the working branch: `ruff check . --fix` passed
+- Focused verification commands for G4-006:
+  - corpus metric scan
+  - dry scan (discover/preprocess/chunk/UTF-8 encode)
+  - Qdrant count and metadata sample
+  - retrieval sanity + regression queryability checks
+
+### Files Changed
+- **Created:** `scripts/run_ingest_opencobol_contrib.py`
+- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
+
+### Acceptance Criteria
+- [x] `data/raw/opencobol-contrib/` populated with source corpus
+- [x] File count and LOC thresholds verified
+- [x] Ingestion pipeline executed successfully
+- [x] Qdrant contains `codebase="opencobol-contrib"` points with correct metadata
+- [x] Existing codebase data unaffected (`lapack`, `blas`, `gnucobol` queryable)
+- [x] DEVLOG updated with G4-006 entry
+- [ ] Feature branch pushed
+
+### Performance
+- Discover + preprocess + chunk dry scan over full corpus completed with zero file errors
+- Throttled embedding path completed full indexing workload (`3,893` chunks) without ingestion-code changes
+
+### Next Steps
+- Use all 5 indexed codebases for G4-007 multi-codebase verification scenarios
+- Keep the OpenCOBOL runner script as the reproducible entry point for selective re-ingestion
+
+### Learnings
+- Provider token caps can fail full-speed runs even when request count limits are acceptable; controllable sub-batching is necessary operationally
+- Running pre-embed UTF-8 dry scans catches data issues early and reduces ingestion risk
+- Keeping codebase metadata strict (`codebase="opencobol-contrib"`) preserves corpus isolation despite overlapping COBOL naming patterns
+
+---
+
 ## Timeline
 
 | Phase     | Days                  | Target                                                                      |
@@ -79,47 +205,44 @@ Tickets reordered by dependency chain. Original numbering preserved for traceabi
 
 | Ticket | Title | Role | Status |
 | ------ | ----- | ---- | ------ |
-| G4-001 | Fortran preprocessor | Fixed/free form detection, comment extraction, continuation handling | TODO |
-| G4-002 | Fortran subroutine chunker | SUBROUTINE/FUNCTION boundary chunking, adaptive 64-768 tokens | TODO |
+| G4-001 | Fortran preprocessor | Fixed/free form detection, comment extraction, continuation handling | DONE |
+| G4-002 | Fortran subroutine chunker | SUBROUTINE/FUNCTION boundary chunking, adaptive 64-768 tokens | DONE |
 
 **Phase 2 — Data Acquisition + Ingestion (depends on Phase 1 for Fortran; COBOL is ready now)**
 
 | Ticket | Title | Role | Status |
 | ------ | ----- | ---- | ------ |
-| G4-006 | Ingest OpenCOBOL Contrib | Uses existing COBOL pipeline — can start immediately | TODO |
-| G4-003 | Ingest GNU Fortran | Download + preprocess + embed + index (needs G4-001/002) | TODO |
+| G4-006 | Ingest OpenCOBOL Contrib | Uses existing COBOL pipeline — can start immediately | DONE |
+| G4-003 | Ingest GNU Fortran | Download + preprocess + embed + index (needs G4-001/002) | IN PROGRESS |
 | G4-004 | Ingest LAPACK | Largest Fortran codebase (needs G4-001/002) | DONE |
-| G4-005 | Ingest BLAS | Smallest Fortran, good validation target (needs G4-001/002) | TODO |
+| G4-005 | Ingest BLAS | Smallest Fortran, good validation target (needs G4-001/002) | DONE |
 
-**Phase 3 — Multi-Codebase + Context Assembly (depends on Phase 2)**
+**Phase 3 — Evaluation + Documentation (compressed from original Phases 3–6)**
 
-| Ticket | Title | Role | Status |
-| ------ | ----- | ---- | ------ |
-| G4-007 | Multi-codebase query support | Test cross-codebase queries with real data, verify codebase filter | TODO |
-| NEW | Context assembly (`context.py`) | Dynamic token budget, top-1 hierarchical expansion | TODO |
+> **Rationale:** The original plan had 4 remaining phases (multi-codebase, feature hardening, evaluation, docs). After audit, most are already working or unnecessary:
+> - **Multi-codebase queries already work** — the API accepts a `codebase` filter param and it flows through search/rerank/generation. No new code needed, just verification.
+> - **All 8 features already work** — prompt differentiation in `prompts.py` handles feature-specific generation. The `feature` param flows through the full pipeline. The empty `src/features/` modules were designed for per-feature retrieval strategies that turned out to be unnecessary.
+> - **Context assembly (`context.py`) is a nice-to-have** — the pipeline works without dynamic token budgets. Chunks go directly from reranker to generation. Skip unless answer quality issues surface during evaluation.
+> - **Feature router (`router.py`) is unnecessary** — routing happens implicitly through the `feature` param in `QueryRequest`.
+>
+> **What remains:** Evaluation (prove the system works with numbers) and documentation (explain what was built).
 
-**Phase 4 — Feature Hardening (depends on Phase 3 for multi-codebase test data)**
+| Ticket | Title | Scope | Status |
+| ------ | ----- | ----- | ------ |
+| G4-007 | Multi-codebase verification | Run test queries across all 5 codebases, verify filter works, spot-check answer quality. No code changes expected. | TODO |
+| G4-008 | Ground truth evaluation dataset | 25–30 query/answer pairs across codebases and features. Manual curation, not LLM-generated. | TODO |
+| G4-009 | Evaluation script + run | Implement `evaluate.py` with retrieval precision@5. Run eval, record results. | TODO |
+| G4-020 | Architecture document | System design, component diagram, real metrics from eval run | TODO |
+| G4-021 | Cost analysis document | Real API spend from ingestion + query testing, projection to scale | TODO |
 
-| Ticket | Title | Role | Status |
-| ------ | ----- | ---- | ------ |
-| G4-010–017 | Feature audit + hardening | Verify all 8 features produce quality answers against real multi-codebase data. Add custom retrieval strategies for Pattern Detection, Impact Analysis, Dependency Mapping if prompt-only is insufficient. | PARTIAL |
-| G4-018 | Feature router (if needed) | Implement `features/router.py` only if per-feature retrieval strategies are needed | PARTIAL |
-| G4-019 | Cohere re-ranking | Already implemented in MVP-010 | DONE |
+**Tickets closed by design (no implementation needed):**
 
-**Phase 5 — Evaluation (depends on Phase 2 + Phase 4)**
-
-| Ticket | Title | Role | Status |
-| ------ | ----- | ---- | ------ |
-| G4-008 | Ground truth evaluation dataset | 15 manual + 35 LLM-generated, 50+ query/answer pairs across all codebases and features | TODO |
-| G4-009 | Evaluation script | precision@5, per-codebase, per-feature breakdown | TODO |
-| G4-022 | Full evaluation run | Run eval, fix regressions, document results | TODO |
-
-**Phase 6 — Documentation (depends on Phase 5 for real metrics)**
-
-| Ticket | Title | Role | Status |
-| ------ | ----- | ---- | ------ |
-| G4-020 | Architecture document | System design, diagrams, metrics from eval run | TODO |
-| G4-021 | Cost analysis document | Real API spend + 4-tier projections (100/1K/10K/100K users) | TODO |
+| Ticket | Title | Why |
+| ------ | ----- | --- |
+| G4-010–017 | Feature audit + hardening | All 8 features work via prompt differentiation. No custom retrieval strategies needed. |
+| G4-018 | Feature router | Routing handled implicitly by `feature` param in `QueryRequest` → `prompts.py` → `generate_answer()`. |
+| G4-019 | Cohere re-ranking | Already implemented in MVP-010. |
+| G4-022 | Full evaluation run | Merged into G4-009. |
 
 ---
 
