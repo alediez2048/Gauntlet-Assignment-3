@@ -1,12 +1,13 @@
 "use client";
 
-import { type FeatureConfig } from "@/lib/features";
+import { type FeatureConfig, CODEBASE_EXAMPLES } from "@/lib/features";
 
 interface QueryInputProps {
   query: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   feature: FeatureConfig;
+  codebase: string | null;
   loading: boolean;
 }
 
@@ -15,8 +16,12 @@ export default function QueryInput({
   onChange,
   onSubmit,
   feature,
+  codebase,
   loading,
 }: QueryInputProps) {
+  const examples =
+    (codebase && CODEBASE_EXAMPLES[codebase]?.[feature.value]) ||
+    feature.examples;
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !loading && query.trim()) {
       e.preventDefault();
@@ -72,7 +77,7 @@ export default function QueryInput({
 
       <div className="flex flex-wrap gap-2">
         <span className="text-xs text-slate-500">Try:</span>
-        {feature.examples.map((example) => (
+        {examples.map((example) => (
           <button
             key={example}
             onClick={() => onChange(example)}

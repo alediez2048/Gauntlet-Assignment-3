@@ -112,6 +112,7 @@ export default function Home() {
               onChange={setQuery}
               onSubmit={handleSubmit}
               feature={feature}
+              codebase={codebase}
               loading={loading}
             />
           </section>
