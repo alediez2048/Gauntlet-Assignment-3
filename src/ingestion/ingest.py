@@ -218,6 +218,9 @@ def ingest_codebase(
             logger.warning("Failed to process %s: %s", file_path, exc)
             stats["errors"] += 1
 
+    # Filter out chunks with empty content — Voyage rejects empty strings.
+    all_chunks = [c for c in all_chunks if c.content.strip()]
+
     stats["chunks_created"] = len(all_chunks)
 
     if not all_chunks:
