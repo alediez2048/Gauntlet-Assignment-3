@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import Header from "@/components/Header";
 import FeatureSelector from "@/components/FeatureSelector";
+import CodebaseSelector from "@/components/CodebaseSelector";
 import QueryInput from "@/components/QueryInput";
 import ResponsePanel from "@/components/ResponsePanel";
 import { FEATURES, type FeatureConfig } from "@/lib/features";
@@ -10,6 +11,7 @@ import { type QueryResponse } from "@/lib/types";
 
 export default function Home() {
   const [feature, setFeature] = useState<FeatureConfig>(FEATURES[0]);
+  const [codebase, setCodebase] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<QueryResponse | null>(null);
@@ -23,14 +25,19 @@ export default function Home() {
     setError(null);
     setResponse(null);
 
+    const body: { query: string; feature: string; codebase?: string | null } = {
+      query: trimmed,
+      feature: feature.value,
+    };
+    if (codebase !== null) {
+      body.codebase = codebase;
+    }
+
     try {
       const res = await fetch("/api/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: trimmed,
-          feature: feature.value,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -48,10 +55,16 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [query, feature, loading]);
+  }, [query, feature, codebase, loading]);
 
   const handleFeatureSelect = useCallback((f: FeatureConfig) => {
     setFeature(f);
+    setResponse(null);
+    setError(null);
+  }, []);
+
+  const handleCodebaseSelect = useCallback((cb: string | null) => {
+    setCodebase(cb);
     setResponse(null);
     setError(null);
   }, []);
@@ -62,6 +75,21 @@ export default function Home() {
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">
         <div className="space-y-6">
+          {/* Codebase selector */}
+          <section>
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Codebase
+            </h2>
+            <CodebaseSelector
+              selected={codebase}
+              onSelect={handleCodebaseSelect}
+              disabled={loading}
+            />
+            <p className="mt-2 text-xs text-slate-500">
+              Choose which codebase to search, or All to search across everything.
+            </p>
+          </section>
+
           {/* Feature selector */}
           <section>
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">

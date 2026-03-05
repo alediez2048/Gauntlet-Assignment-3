@@ -211,13 +211,20 @@ export default function ResponsePanel({
                   key={idx}
                   className="rounded-lg border border-slate-800 bg-slate-900 p-3"
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
                     <code className="text-xs text-emerald-400">
                       {chunk.file_path}:{chunk.line_start}-{chunk.line_end}
                     </code>
-                    <span className="shrink-0 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
-                      {chunk.name}
-                    </span>
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
+                        {chunk.name}
+                      </span>
+                      {chunk.codebase && (
+                        <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
+                          {chunk.codebase}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <pre className="mt-2 max-h-40 overflow-auto text-[11px] leading-relaxed text-slate-500">
                     {chunk.content}

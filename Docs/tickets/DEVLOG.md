@@ -7,6 +7,53 @@
 
 ---
 
+## G4-009: Vercel Frontend — Codebase Selector & Multi-Codebase Demo ✅
+
+### Plain-English Summary
+- Added codebase selector to the web UI so users can target LAPACK, BLAS, GnuCOBOL, OpenCOBOL Contrib, or GNU Fortran — or search "All codebases"
+- Created `/api/codebases` proxy route to fetch codebase list from backend
+- Citations now display a per-chunk codebase badge for clarity when results span multiple codebases
+
+### Metadata
+- **Status:** Complete
+- **Date:** Mar 4, 2026
+- **Ticket:** G4-009
+- **Branch:** feature/g4-009-codebase-selector
+
+### Scope
+- Phase 1: Codebase API proxy (`GET /api/codebases`)
+- Phase 2: CodebaseSelector component (All + 5 codebases)
+- Phase 3: Integrate codebase into query page (state, selector, request body)
+- Phase 4: Per-chunk codebase badge in ResponsePanel citations
+
+### Key Achievements
+- Codebase selector visible on query page with "All codebases" and 5 codebase options
+- Query requests include `codebase` when a specific codebase is selected
+- Citations display codebase badge per chunk (subtle pill style)
+- Human-readable labels: GnuCOBOL, OpenCOBOL Contrib, LAPACK, BLAS, GNU Fortran
+
+### Files Changed
+- **Created:** `frontend/app/api/codebases/route.ts` — proxy GET to backend
+- **Created:** `frontend/components/CodebaseSelector.tsx` — selector with All + 5 codebases
+- **Modified:** `frontend/app/page.tsx` — codebase state, CodebaseSelector, pass codebase in query body
+- **Modified:** `frontend/components/ResponsePanel.tsx` — codebase badge per citation
+- **Updated:** `Docs/tickets/DEVLOG.md` — this entry
+
+### Demo Script (Verification)
+1. **LAPACK:** Select "LAPACK" → "How does DGETRF perform LU factorization?" → LAPACK chunks, badge "lapack"
+2. **BLAS:** Select "BLAS" → "What does DGEMM do for matrix multiplication?" → BLAS chunks
+3. **OpenCOBOL Contrib:** Select "OpenCOBOL Contrib" → "What COBOL sample programs are available?" → opencobol-contrib chunks
+4. **All:** Select "All codebases" → "How is matrix multiplication implemented?" → mixed lapack/blas chunks with badges
+
+### Acceptance Criteria
+- [x] Codebase selector visible on query page; user can pick "All" or any of 5 codebases
+- [x] Query requests include `codebase` when a specific codebase is selected
+- [x] Citations display codebase badge per chunk
+- [x] No regressions: existing feature selector and query flow still work
+- [x] DEVLOG updated with G4-009 entry
+
+---
+
 ## G4-008: Ground Truth Evaluation Dataset + Evaluation Script ✅
 
 ### Plain-English Summary
